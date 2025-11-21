@@ -46,13 +46,16 @@ go_tools:
   setup_envtest: 'latest'
   goimports: 'v0.30.0'
   crane: 'v0.20.2'
+  deepcopy_gen: 'v0.30.0'
 
 # Protocol Buffers / gRPC
 protobuf:
   protobuf: 'v33.0'
   protoc_gen_go: 'v1.36.10'
   protoc_gen_go_grpc: 'v1.5.1'
+  protoc_gen_grpc_gateway: 'v2.20.0'
   grpcio_tools: '1.75.1'
+  googleapis: '67782cb57b1fd81a4f49edef8243acb02843bf75'
 
 # Linting & Validation
 linting:

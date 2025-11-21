@@ -1,0 +1,123 @@
+// Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package nvidia.nvsentinel.v1alpha1;
+
+option go_package = "github.com/nvidia/nvsentinel/api/gen/go/device/v1alpha1;v1alpha1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// NOTE: This schema defines the wire format for the GPU API.
+//
+// For detailed documentation on field behaviors, enum definitions, etc.,
+// please refer to the canonical Go definitions in 'api/device/v1alpha1/'.
+// =============================================================================
+
+// Gpu represents a single GPU resource.
+message Gpu {
+  string name = 1;
+  string generate_name = 2;
+  GpuSpec spec = 3;
+  GpuStatus status = 4;
+}
+
+// GpuList represents a collection of GPU resources.
+message GpuList {
+  repeated Gpu items = 1;
+}
+
+// GpuSpec defines the desired state for a specific GPU.
+message GpuSpec {
+  string id = 1;
+  string node_name = 2;
+}
+
+// GpuStatus defines the observed state of a single GPU.
+message GpuStatus {
+  repeated Condition conditions = 1;
+  repeated string recommended_actions = 2;
+}
+
+// Condition "mimics" k8s.io/apimachinery/pkg/apis/meta/v1.Condition.
+message Condition {
+  string type = 1;
+  string status = 2;
+  google.protobuf.Timestamp last_transition_time = 3;
+  string reason = 4;
+  string message = 5;
+}
+
+// ==========================================
+// Service Definition
+// ==========================================
+
+// GpuService provides an API for managing and observing GPU resources.
+service GpuService {
+  // GetGpu retrieves a single GPU resource by its name.
+  // HTTP: GET /v1alpha1/{name}
+  rpc GetGpu(GetGpuRequest) returns (GetGpuResponse) {
+    option (google.api.http) = {
+      get: "/v1alpha1/{name=nodes/*/gpus/*}"
+    };
+  }
+
+  // ListGpus retrieves a list of GPU resources.
+  // HTTP: GET /v1alpha1/gpus
+  rpc ListGpus(ListGpusRequest) returns (ListGpusResponse) {
+    option (google.api.http) = {
+      get: "/v1alpha1/gpus"
+    };
+  }
+
+  // WatchGpus streams changes to GPU resources.
+  // HTTP: GET /v1alpha1/gpus:watch
+  rpc WatchGpus(WatchGpusRequest) returns (stream WatchGpusResponse) {
+    option (google.api.http) = {
+      get: "/v1alpha1/gpus:watch"
+    };
+  }
+}
+
+message GetGpuRequest {
+  // The unique resource name of the GPU to retrieve.
+  string name = 1;
+}
+
+message GetGpuResponse {
+  Gpu gpu = 1;
+}
+
+message ListGpusRequest { }
+
+message ListGpusResponse {
+  GpuList gpu_list = 1;
+}
+
+message WatchGpusRequest {
+  // A resource version from which to start the watch. 
+  // If omitted, the watch begins with a snapshot of the current state.
+  string resource_version = 1;
+}
+
+message WatchGpusResponse {
+  // The type of change that occurred.
+  string type = 1;
+
+  // The GPU resource that changed.
+  Gpu object = 2;
+}

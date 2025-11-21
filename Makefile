@@ -11,6 +11,7 @@ ENVTEST := setup-envtest
 # Variables
 GOPATH ?= $(shell go env GOPATH)
 GO_CACHE_DIR ?= $(shell go env GOCACHE)
+THIRD_PARTY_DIR := third_party
 
 # Load tool versions from .versions.yaml (single source of truth)
 # Requires yq to be installed: brew install yq (macOS) or see https://github.com/mikefarah/yq
@@ -34,11 +35,13 @@ POETRY_VERSION := $(shell $(YQ) '.build_tools.poetry' .versions.yaml)
 PROTOBUF_VERSION := $(shell $(YQ) '.protobuf.protobuf' .versions.yaml)
 PROTOC_GEN_GO_GRPC_VERSION := $(shell $(YQ) '.protobuf.protoc_gen_go_grpc' .versions.yaml)
 PROTOC_GEN_GO_VERSION := $(shell $(YQ) '.protobuf.protoc_gen_go' .versions.yaml)
+GOOGLEAPIS_VERSION := $(shell $(YQ) '.protobuf.googleapis' .versions.yaml)
 PYTHON_VERSION := $(shell $(YQ) '.languages.python' .versions.yaml)
 SHELLCHECK_VERSION := $(shell $(YQ) '.linting.shellcheck' .versions.yaml)
 
 # Go modules with specific patterns from CI
 GO_MODULES := \
+	api \
 	health-monitors/syslog-health-monitor \
 	health-monitors/csp-health-monitor \
 	platform-connectors \
@@ -266,6 +269,25 @@ health-monitors-lint-test-all:
 	@echo "Running lint and tests for all health monitors..."
 	$(MAKE) -C health-monitors lint-test-all
 
+GOOGLEAPIS_URL := https://raw.githubusercontent.com/googleapis/googleapis/$(GOOGLEAPIS_VERSION)/google/api
+
+.PHONY: protos-vendor
+protos-vendor: ## Download third-party protobuf dependencies.
+	@echo "Vendoring third-party protobufs..."
+	@echo "  googleapis: $(GOOGLEAPIS_VERSION)"
+	@mkdir -p $(THIRD_PARTY_DIR)/google/api
+	@echo "Downloading google/api/annotations.proto..."
+	@curl -sSfL $(GOOGLEAPIS_URL)/annotations.proto -o $(THIRD_PARTY_DIR)/google/api/annotations.proto
+	@echo "Downloading google/api/http.proto..."
+	@curl -sSfL $(GOOGLEAPIS_URL)/http.proto -o $(THIRD_PARTY_DIR)/google/api/http.proto
+	@echo "Downloading google/api/field_behavior.proto..."
+	@curl -sSfL $(GOOGLEAPIS_URL)/field_behavior.proto -o $(THIRD_PARTY_DIR)/google/api/field_behavior.proto
+	@echo "All third-party protobuf dependencies updated successfully."
+
+.PHONY: protos-clean-vendor
+protos-clean-vendor: ## Remove all third-party protobuf files.
+	rm -rf $(THIRD_PARTY_DIR)
+
 # Generate protobuf files
 .PHONY: protos-generate
 protos-generate: protos-clean ## Generate protobuf files from .proto sources
@@ -288,6 +310,8 @@ protos-generate: protos-clean ## Generate protobuf files from .proto sources
 	@echo "========================"
 	# Generate Go protobuf files in data-models (shared by all Go modules)
 	$(MAKE) -C data-models protos-generate
+	# Generate Go protobuf files in api
+	$(MAKE) -C api protos-generate
 	# Generate Python protobuf files for gpu-health-monitor
 	$(MAKE) -C health-monitors/gpu-health-monitor protos-generate
 

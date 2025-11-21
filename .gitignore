@@ -14,12 +14,14 @@
 *.dll
 *.so
 *.dylib
+api/bin/*
 
 # Test binary, built with `go test -c`
 *.test
 
 # Output of the go coverage tool
 *.out
+api/*.out
 
 # Go workspace file
 go.work
