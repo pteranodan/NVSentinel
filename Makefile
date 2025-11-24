@@ -272,7 +272,7 @@ health-monitors-lint-test-all:
 GOOGLEAPIS_URL := https://raw.githubusercontent.com/googleapis/googleapis/$(GOOGLEAPIS_VERSION)/google/api
 
 .PHONY: protos-vendor
-protos-vendor: ## Download third-party protobuf dependencies.
+protos-vendor: protos-clean-vendor ## Download third-party protobuf dependencies.
 	@echo "Vendoring third-party protobufs..."
 	@echo "  googleapis: $(GOOGLEAPIS_VERSION)"
 	@mkdir -p $(THIRD_PARTY_DIR)/google/api
@@ -286,6 +286,7 @@ protos-vendor: ## Download third-party protobuf dependencies.
 
 .PHONY: protos-clean-vendor
 protos-clean-vendor: ## Remove all third-party protobuf files.
+	@echo "Cleaning up old third-party protobufs..."
 	rm -rf $(THIRD_PARTY_DIR)
 
 # Generate protobuf files

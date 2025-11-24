@@ -22,17 +22,11 @@ import (
 // +k8s:deepcopy-gen=true
 // GPU represents a single GPU resource.
 type GPU struct {
-	// Name is the unique name of the GPU.
+	// Name is the unique name for the GPU.
 	// It is primarily used for lookup and creation idempotence.
-	// If empty during creation, the server will generate a name using the
-	// GenerateName prefix (if provided) or the deterministic hash of the Spec.
+	// If empty during creation, the server will generate a name.
 	// +optional
 	Name string `json:"name,omitempty"`
-
-	// GenerateName is an optional prefix, used by the server to generate a unique
-	// name ONLY IF the Name field has not been provided.
-	// +optional
-	GenerateName string `json:"generateName,omitempty"`
 
 	// +optional
 	Spec GPUSpec `json:"spec,omitempty"`

@@ -31,9 +31,8 @@ import "google/protobuf/timestamp.proto";
 // Gpu represents a single GPU resource.
 message Gpu {
   string name = 1;
-  string generate_name = 2;
-  GpuSpec spec = 3;
-  GpuStatus status = 4;
+  GpuSpec spec = 2;
+  GpuStatus status = 3;
 }
 
 // GpuList represents a collection of GPU resources.

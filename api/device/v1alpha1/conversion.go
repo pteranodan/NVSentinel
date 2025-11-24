@@ -32,10 +32,9 @@ func (in *GPU) ToProto() *pb.Gpu {
 	}
 
 	return &pb.Gpu{
-		Name:         in.Name,
-		GenerateName: in.GenerateName,
-		Spec:         in.Spec.ToProto(),
-		Status:       in.Status.ToProto(),
+		Name:   in.Name,
+		Spec:   in.Spec.ToProto(),
+		Status: in.Status.ToProto(),
 	}
 }
 
@@ -119,10 +118,9 @@ func GPUFromProto(in *pb.Gpu) *GPU {
 	}
 
 	return &GPU{
-		Name:         in.Name,
-		GenerateName: in.GenerateName,
-		Spec:         *SpecFromProto(in.Spec),
-		Status:       *StatusFromProto(in.Status),
+		Name:   in.Name,
+		Spec:   *SpecFromProto(in.Spec),
+		Status: *StatusFromProto(in.Status),
 	}
 }
 
