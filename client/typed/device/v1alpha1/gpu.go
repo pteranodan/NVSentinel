@@ -99,7 +99,7 @@ func (a *gpuStreamAdapter) Recv() (*GPUEvent, error) {
 		return nil, err
 	}
 
-	eventType := eventv1alpha1.CleanEventType(pbEvent.Type)
+	eventType := eventv1alpha1.CleanEventType(pbEvent.Type.String())
 	obj := devicev1alpha1.GPUFromProto(pbEvent.Object)
 
 	return &GPUEvent{

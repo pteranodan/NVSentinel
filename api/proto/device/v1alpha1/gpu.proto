@@ -44,12 +44,17 @@ message GpuList {
 message GpuSpec {
   string id = 1;
   string node_name = 2;
+  int32 device_index = 3;
+  string pci_address = 4;
+  string model = 5;
 }
 
 // GpuStatus defines the observed state of a single GPU.
 message GpuStatus {
-  repeated Condition conditions = 1;
-  repeated string recommended_actions = 2;
+  int64 observed_generation = 1;
+  google.protobuf.Timestamp last_probe_time = 2;
+  repeated Condition conditions = 3;
+  repeated string recommended_actions = 4;
 }
 
 // Condition "mimics" k8s.io/apimachinery/pkg/apis/meta/v1.Condition.
@@ -107,6 +112,16 @@ message ListGpusResponse {
   GpuList gpu_list = 1;
 }
 
+// WatchEventType indicates the type of change that occurred to a resource.
+enum WatchEventType {
+  WATCH_EVENT_TYPE_UNSPECIFIED = 0;
+  WATCH_EVENT_TYPE_ADDED = 1;
+  WATCH_EVENT_TYPE_MODIFIED = 2;
+  WATCH_EVENT_TYPE_DELETED = 3;
+  WATCH_EVENT_TYPE_BOOKMARK = 4;
+  WATCH_EVENT_TYPE_ERROR = 5;
+}
+
 message WatchGpusRequest {
   // A resource version from which to start the watch. 
   // If omitted, the watch begins with a snapshot of the current state.
@@ -115,8 +130,12 @@ message WatchGpusRequest {
 
 message WatchGpusResponse {
   // The type of change that occurred.
-  string type = 1;
+  WatchEventType type = 1;
 
   // The GPU resource that changed.
   Gpu object = 2;
+
+  // ResourceVersion of this event. Can be used to resume watch from
+  // this point.
+  string resource_version = 3;
 }

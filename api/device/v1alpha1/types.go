@@ -48,19 +48,40 @@ type GPUSpec struct {
 	ID string `json:"id"`
 	// NodeName is the name of the node where the GPU is located.
 	NodeName string `json:"nodeName"`
+	// DeviceIndex is the GPU's index on the node (e.g., 0, 1, 2).
+	// +optional
+	DeviceIndex *int32 `json:"deviceIndex,omitempty"`
+	// PCIAddress is the PCIe bus address (e.g., "0000:07:00.0").
+	// +optional
+	PCIAddress string `json:"pciAddress,omitempty"`
+	// Model is the GPU model name (e.g., "A100-SXM4-80GB").
+	// +optional
+	Model string `json:"model,omitempty"`
 }
 
 // +k8s:deepcopy-gen=true
 // GPUStatus describes the observed state of a single GPU.
 type GPUStatus struct {
+	// ObservedGeneration reflects the generation of the GPU spec that this
+	// status corresponds to. Controllers use this to determine if the status
+	// is stale and needs updating.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// LastProbeTime is the timestamp when the GPU health was last checked.
+	// +optional
+	LastProbeTime *metav1.Time `json:"lastProbeTime,omitempty"`
+
 	// Conditions represents the observations of a GPU's current state.
-	// Known condition types are "Ready", "Degraded", "ResetRequired", and "HardwareFailure".
-	// The 'Reason' field in each condition corresponds to specific error patterns (e.g., "DoubleBitECCError", "GPUFallenOffBus").
+	// Known condition types are "Ready", "Degraded", "ResetRequired", and
+	// "HardwareFailure". The 'Reason' field in each condition corresponds
+	// to specific error patterns (e.g., "DoubleBitECCError",
+	// "GPUFallenOffBus").
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// RecommendedActions is a list of suggested remediation steps to resolve the issues reported in Conditions.
-	// Examples: "ResetGPU", "RebootNode", "ReportIssue".
+	// RecommendedActions is a list of suggested remediation steps to
+	// resolve the issues reported in Conditions.
 	// +optional
-	RecommendedActions []string `json:"recommendedActions,omitempty"`
+	RecommendedActions []RecommendedAction `json:"recommendedActions,omitempty"`
 }

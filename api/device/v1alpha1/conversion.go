@@ -63,10 +63,24 @@ func (in *GPUSpec) ToProto() *pb.GpuSpec {
 		return nil
 	}
 
-	return &pb.GpuSpec{
+	spec := &pb.GpuSpec{
 		Id:       in.ID,
 		NodeName: in.NodeName,
 	}
+
+	if in.DeviceIndex != nil {
+		spec.DeviceIndex = *in.DeviceIndex
+	}
+
+	if in.PCIAddress != "" {
+		spec.PciAddress = in.PCIAddress
+	}
+
+	if in.Model != "" {
+		spec.Model = in.Model
+	}
+
+	return spec
 }
 
 // ToProto converts the GPUStatus object to a Proto message.
@@ -91,10 +105,20 @@ func (in *GPUStatus) ToProto() *pb.GpuStatus {
 		}
 	}
 
-	return &pb.GpuStatus{
+	status := &pb.GpuStatus{
 		Conditions:         pbConds,
 		RecommendedActions: pbActions,
 	}
+
+	if in.ObservedGeneration != 0 {
+		status.ObservedGeneration = in.ObservedGeneration
+	}
+
+	if in.LastProbeTime != nil {
+		status.LastProbeTime = timestamppb.New(in.LastProbeTime.Time)
+	}
+
+	return status
 }
 
 // ConditionToProto converts a k8s Condition to a Proto Condition.
@@ -149,10 +173,25 @@ func SpecFromProto(in *pb.GpuSpec) *GPUSpec {
 		return &GPUSpec{}
 	}
 
-	return &GPUSpec{
+	spec := &GPUSpec{
 		ID:       in.Id,
 		NodeName: in.NodeName,
 	}
+
+	if in.DeviceIndex != 0 {
+		deviceIndex := in.DeviceIndex
+		spec.DeviceIndex = &deviceIndex
+	}
+
+	if in.PciAddress != "" {
+		spec.PCIAddress = in.PciAddress
+	}
+
+	if in.Model != "" {
+		spec.Model = in.Model
+	}
+
+	return spec
 }
 
 func StatusFromProto(in *pb.GpuStatus) *GPUStatus {
@@ -170,18 +209,29 @@ func StatusFromProto(in *pb.GpuStatus) *GPUStatus {
 		}
 	}
 
-	var actions []string
+	var actions []RecommendedAction
 	if in.RecommendedActions != nil {
-		actions = make([]string, 0, len(in.RecommendedActions))
+		actions = make([]RecommendedAction, 0, len(in.RecommendedActions))
 		for _, a := range in.RecommendedActions {
-			actions = append(actions, string(a))
+			actions = append(actions, RecommendedAction(a))
 		}
 	}
 
-	return &GPUStatus{
+	status := &GPUStatus{
 		Conditions:         conds,
 		RecommendedActions: actions,
 	}
+
+	if in.ObservedGeneration != 0 {
+		status.ObservedGeneration = in.ObservedGeneration
+	}
+
+	if in.LastProbeTime != nil {
+		lastProbe := metav1.NewTime(in.LastProbeTime.AsTime())
+		status.LastProbeTime = &lastProbe
+	}
+
+	return status
 }
 
 func ConditionFromProto(in *pb.Condition) metav1.Condition {
