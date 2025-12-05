@@ -63,10 +63,24 @@ func (in *GPUSpec) ToProto() *pb.GpuSpec {
 		return nil
 	}
 
-	return &pb.GpuSpec{
+	spec := &pb.GpuSpec{
 		Id:       in.ID,
 		NodeName: in.NodeName,
 	}
+
+	if in.DeviceIndex != nil {
+		spec.DeviceIndex = *in.DeviceIndex
+	}
+
+	if in.PCIAddress != "" {
+		spec.PciAddress = in.PCIAddress
+	}
+
+	if in.Model != "" {
+		spec.Model = in.Model
+	}
+
+	return spec
 }
 
 // ToProto converts the GPUStatus object to a Proto message.
@@ -149,10 +163,25 @@ func SpecFromProto(in *pb.GpuSpec) *GPUSpec {
 		return &GPUSpec{}
 	}
 
-	return &GPUSpec{
+	spec := &GPUSpec{
 		ID:       in.Id,
 		NodeName: in.NodeName,
 	}
+
+	if in.DeviceIndex != 0 {
+		deviceIndex := in.DeviceIndex
+		spec.DeviceIndex = &deviceIndex
+	}
+
+	if in.PciAddress != "" {
+		spec.PCIAddress = in.PciAddress
+	}
+
+	if in.Model != "" {
+		spec.Model = in.Model
+	}
+
+	return spec
 }
 
 func StatusFromProto(in *pb.GpuStatus) *GPUStatus {

@@ -44,6 +44,9 @@ message GpuList {
 message GpuSpec {
   string id = 1;
   string node_name = 2;
+  int32 device_index = 3;
+  string pci_address = 4;
+  string model = 5;
 }
 
 // GpuStatus defines the observed state of a single GPU.

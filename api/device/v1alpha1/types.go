@@ -48,6 +48,15 @@ type GPUSpec struct {
 	ID string `json:"id"`
 	// NodeName is the name of the node where the GPU is located.
 	NodeName string `json:"nodeName"`
+	// DeviceIndex is the GPU's index on the node (e.g., 0, 1, 2).
+	// +optional
+	DeviceIndex *int32 `json:"deviceIndex,omitempty"`
+	// PCIAddress is the PCIe bus address (e.g., "0000:07:00.0").
+	// +optional
+	PCIAddress string `json:"pciAddress,omitempty"`
+	// Model is the GPU model name (e.g., "A100-SXM4-80GB").
+	// +optional
+	Model string `json:"model,omitempty"`
 }
 
 // +k8s:deepcopy-gen=true
