@@ -37,6 +37,65 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// WatchEventType indicates the type of change that occurred to a resource.
+type WatchEventType int32
+
+const (
+	WatchEventType_WATCH_EVENT_TYPE_UNSPECIFIED WatchEventType = 0
+	WatchEventType_WATCH_EVENT_TYPE_ADDED       WatchEventType = 1
+	WatchEventType_WATCH_EVENT_TYPE_MODIFIED    WatchEventType = 2
+	WatchEventType_WATCH_EVENT_TYPE_DELETED     WatchEventType = 3
+	WatchEventType_WATCH_EVENT_TYPE_BOOKMARK    WatchEventType = 4
+	WatchEventType_WATCH_EVENT_TYPE_ERROR       WatchEventType = 5
+)
+
+// Enum value maps for WatchEventType.
+var (
+	WatchEventType_name = map[int32]string{
+		0: "WATCH_EVENT_TYPE_UNSPECIFIED",
+		1: "WATCH_EVENT_TYPE_ADDED",
+		2: "WATCH_EVENT_TYPE_MODIFIED",
+		3: "WATCH_EVENT_TYPE_DELETED",
+		4: "WATCH_EVENT_TYPE_BOOKMARK",
+		5: "WATCH_EVENT_TYPE_ERROR",
+	}
+	WatchEventType_value = map[string]int32{
+		"WATCH_EVENT_TYPE_UNSPECIFIED": 0,
+		"WATCH_EVENT_TYPE_ADDED":       1,
+		"WATCH_EVENT_TYPE_MODIFIED":    2,
+		"WATCH_EVENT_TYPE_DELETED":     3,
+		"WATCH_EVENT_TYPE_BOOKMARK":    4,
+		"WATCH_EVENT_TYPE_ERROR":       5,
+	}
+)
+
+func (x WatchEventType) Enum() *WatchEventType {
+	p := new(WatchEventType)
+	*p = x
+	return p
+}
+
+func (x WatchEventType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WatchEventType) Descriptor() protoreflect.EnumDescriptor {
+	return file_device_v1alpha1_gpu_proto_enumTypes[0].Descriptor()
+}
+
+func (WatchEventType) Type() protoreflect.EnumType {
+	return &file_device_v1alpha1_gpu_proto_enumTypes[0]
+}
+
+func (x WatchEventType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WatchEventType.Descriptor instead.
+func (WatchEventType) EnumDescriptor() ([]byte, []int) {
+	return file_device_v1alpha1_gpu_proto_rawDescGZIP(), []int{0}
+}
+
 // Gpu represents a single GPU resource.
 type Gpu struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -584,11 +643,14 @@ func (x *WatchGpusRequest) GetResourceVersion() string {
 type WatchGpusResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The type of change that occurred.
-	Type string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	Type WatchEventType `protobuf:"varint,1,opt,name=type,proto3,enum=nvidia.nvsentinel.v1alpha1.WatchEventType" json:"type,omitempty"`
 	// The GPU resource that changed.
-	Object        *Gpu `protobuf:"bytes,2,opt,name=object,proto3" json:"object,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Object *Gpu `protobuf:"bytes,2,opt,name=object,proto3" json:"object,omitempty"`
+	// ResourceVersion of this event. Can be used to resume watch from
+	// this point.
+	ResourceVersion string `protobuf:"bytes,3,opt,name=resource_version,json=resourceVersion,proto3" json:"resource_version,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *WatchGpusResponse) Reset() {
@@ -621,11 +683,11 @@ func (*WatchGpusResponse) Descriptor() ([]byte, []int) {
 	return file_device_v1alpha1_gpu_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *WatchGpusResponse) GetType() string {
+func (x *WatchGpusResponse) GetType() WatchEventType {
 	if x != nil {
 		return x.Type
 	}
-	return ""
+	return WatchEventType_WATCH_EVENT_TYPE_UNSPECIFIED
 }
 
 func (x *WatchGpusResponse) GetObject() *Gpu {
@@ -633,6 +695,13 @@ func (x *WatchGpusResponse) GetObject() *Gpu {
 		return x.Object
 	}
 	return nil
+}
+
+func (x *WatchGpusResponse) GetResourceVersion() string {
+	if x != nil {
+		return x.ResourceVersion
+	}
+	return ""
 }
 
 var File_device_v1alpha1_gpu_proto protoreflect.FileDescriptor
@@ -674,10 +743,18 @@ const file_device_v1alpha1_gpu_proto_rawDesc = "" +
 	"\x10ListGpusResponse\x12>\n" +
 	"\bgpu_list\x18\x01 \x01(\v2#.nvidia.nvsentinel.v1alpha1.GpuListR\agpuList\"=\n" +
 	"\x10WatchGpusRequest\x12)\n" +
-	"\x10resource_version\x18\x01 \x01(\tR\x0fresourceVersion\"`\n" +
-	"\x11WatchGpusResponse\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\x127\n" +
-	"\x06object\x18\x02 \x01(\v2\x1f.nvidia.nvsentinel.v1alpha1.GpuR\x06object2\xa1\x03\n" +
+	"\x10resource_version\x18\x01 \x01(\tR\x0fresourceVersion\"\xb7\x01\n" +
+	"\x11WatchGpusResponse\x12>\n" +
+	"\x04type\x18\x01 \x01(\x0e2*.nvidia.nvsentinel.v1alpha1.WatchEventTypeR\x04type\x127\n" +
+	"\x06object\x18\x02 \x01(\v2\x1f.nvidia.nvsentinel.v1alpha1.GpuR\x06object\x12)\n" +
+	"\x10resource_version\x18\x03 \x01(\tR\x0fresourceVersion*\xc6\x01\n" +
+	"\x0eWatchEventType\x12 \n" +
+	"\x1cWATCH_EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16WATCH_EVENT_TYPE_ADDED\x10\x01\x12\x1d\n" +
+	"\x19WATCH_EVENT_TYPE_MODIFIED\x10\x02\x12\x1c\n" +
+	"\x18WATCH_EVENT_TYPE_DELETED\x10\x03\x12\x1d\n" +
+	"\x19WATCH_EVENT_TYPE_BOOKMARK\x10\x04\x12\x1a\n" +
+	"\x16WATCH_EVENT_TYPE_ERROR\x10\x052\xa1\x03\n" +
 	"\n" +
 	"GpuService\x12\x88\x01\n" +
 	"\x06GetGpu\x12).nvidia.nvsentinel.v1alpha1.GetGpuRequest\x1a*.nvidia.nvsentinel.v1alpha1.GetGpuResponse\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v1alpha1/{name=nodes/*/gpus/*}\x12}\n" +
@@ -696,42 +773,45 @@ func file_device_v1alpha1_gpu_proto_rawDescGZIP() []byte {
 	return file_device_v1alpha1_gpu_proto_rawDescData
 }
 
+var file_device_v1alpha1_gpu_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_device_v1alpha1_gpu_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_device_v1alpha1_gpu_proto_goTypes = []any{
-	(*Gpu)(nil),                   // 0: nvidia.nvsentinel.v1alpha1.Gpu
-	(*GpuList)(nil),               // 1: nvidia.nvsentinel.v1alpha1.GpuList
-	(*GpuSpec)(nil),               // 2: nvidia.nvsentinel.v1alpha1.GpuSpec
-	(*GpuStatus)(nil),             // 3: nvidia.nvsentinel.v1alpha1.GpuStatus
-	(*Condition)(nil),             // 4: nvidia.nvsentinel.v1alpha1.Condition
-	(*GetGpuRequest)(nil),         // 5: nvidia.nvsentinel.v1alpha1.GetGpuRequest
-	(*GetGpuResponse)(nil),        // 6: nvidia.nvsentinel.v1alpha1.GetGpuResponse
-	(*ListGpusRequest)(nil),       // 7: nvidia.nvsentinel.v1alpha1.ListGpusRequest
-	(*ListGpusResponse)(nil),      // 8: nvidia.nvsentinel.v1alpha1.ListGpusResponse
-	(*WatchGpusRequest)(nil),      // 9: nvidia.nvsentinel.v1alpha1.WatchGpusRequest
-	(*WatchGpusResponse)(nil),     // 10: nvidia.nvsentinel.v1alpha1.WatchGpusResponse
-	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
+	(WatchEventType)(0),           // 0: nvidia.nvsentinel.v1alpha1.WatchEventType
+	(*Gpu)(nil),                   // 1: nvidia.nvsentinel.v1alpha1.Gpu
+	(*GpuList)(nil),               // 2: nvidia.nvsentinel.v1alpha1.GpuList
+	(*GpuSpec)(nil),               // 3: nvidia.nvsentinel.v1alpha1.GpuSpec
+	(*GpuStatus)(nil),             // 4: nvidia.nvsentinel.v1alpha1.GpuStatus
+	(*Condition)(nil),             // 5: nvidia.nvsentinel.v1alpha1.Condition
+	(*GetGpuRequest)(nil),         // 6: nvidia.nvsentinel.v1alpha1.GetGpuRequest
+	(*GetGpuResponse)(nil),        // 7: nvidia.nvsentinel.v1alpha1.GetGpuResponse
+	(*ListGpusRequest)(nil),       // 8: nvidia.nvsentinel.v1alpha1.ListGpusRequest
+	(*ListGpusResponse)(nil),      // 9: nvidia.nvsentinel.v1alpha1.ListGpusResponse
+	(*WatchGpusRequest)(nil),      // 10: nvidia.nvsentinel.v1alpha1.WatchGpusRequest
+	(*WatchGpusResponse)(nil),     // 11: nvidia.nvsentinel.v1alpha1.WatchGpusResponse
+	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
 }
 var file_device_v1alpha1_gpu_proto_depIdxs = []int32{
-	2,  // 0: nvidia.nvsentinel.v1alpha1.Gpu.spec:type_name -> nvidia.nvsentinel.v1alpha1.GpuSpec
-	3,  // 1: nvidia.nvsentinel.v1alpha1.Gpu.status:type_name -> nvidia.nvsentinel.v1alpha1.GpuStatus
-	0,  // 2: nvidia.nvsentinel.v1alpha1.GpuList.items:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
-	11, // 3: nvidia.nvsentinel.v1alpha1.GpuStatus.last_probe_time:type_name -> google.protobuf.Timestamp
-	4,  // 4: nvidia.nvsentinel.v1alpha1.GpuStatus.conditions:type_name -> nvidia.nvsentinel.v1alpha1.Condition
-	11, // 5: nvidia.nvsentinel.v1alpha1.Condition.last_transition_time:type_name -> google.protobuf.Timestamp
-	0,  // 6: nvidia.nvsentinel.v1alpha1.GetGpuResponse.gpu:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
-	1,  // 7: nvidia.nvsentinel.v1alpha1.ListGpusResponse.gpu_list:type_name -> nvidia.nvsentinel.v1alpha1.GpuList
-	0,  // 8: nvidia.nvsentinel.v1alpha1.WatchGpusResponse.object:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
-	5,  // 9: nvidia.nvsentinel.v1alpha1.GpuService.GetGpu:input_type -> nvidia.nvsentinel.v1alpha1.GetGpuRequest
-	7,  // 10: nvidia.nvsentinel.v1alpha1.GpuService.ListGpus:input_type -> nvidia.nvsentinel.v1alpha1.ListGpusRequest
-	9,  // 11: nvidia.nvsentinel.v1alpha1.GpuService.WatchGpus:input_type -> nvidia.nvsentinel.v1alpha1.WatchGpusRequest
-	6,  // 12: nvidia.nvsentinel.v1alpha1.GpuService.GetGpu:output_type -> nvidia.nvsentinel.v1alpha1.GetGpuResponse
-	8,  // 13: nvidia.nvsentinel.v1alpha1.GpuService.ListGpus:output_type -> nvidia.nvsentinel.v1alpha1.ListGpusResponse
-	10, // 14: nvidia.nvsentinel.v1alpha1.GpuService.WatchGpus:output_type -> nvidia.nvsentinel.v1alpha1.WatchGpusResponse
-	12, // [12:15] is the sub-list for method output_type
-	9,  // [9:12] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	3,  // 0: nvidia.nvsentinel.v1alpha1.Gpu.spec:type_name -> nvidia.nvsentinel.v1alpha1.GpuSpec
+	4,  // 1: nvidia.nvsentinel.v1alpha1.Gpu.status:type_name -> nvidia.nvsentinel.v1alpha1.GpuStatus
+	1,  // 2: nvidia.nvsentinel.v1alpha1.GpuList.items:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
+	12, // 3: nvidia.nvsentinel.v1alpha1.GpuStatus.last_probe_time:type_name -> google.protobuf.Timestamp
+	5,  // 4: nvidia.nvsentinel.v1alpha1.GpuStatus.conditions:type_name -> nvidia.nvsentinel.v1alpha1.Condition
+	12, // 5: nvidia.nvsentinel.v1alpha1.Condition.last_transition_time:type_name -> google.protobuf.Timestamp
+	1,  // 6: nvidia.nvsentinel.v1alpha1.GetGpuResponse.gpu:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
+	2,  // 7: nvidia.nvsentinel.v1alpha1.ListGpusResponse.gpu_list:type_name -> nvidia.nvsentinel.v1alpha1.GpuList
+	0,  // 8: nvidia.nvsentinel.v1alpha1.WatchGpusResponse.type:type_name -> nvidia.nvsentinel.v1alpha1.WatchEventType
+	1,  // 9: nvidia.nvsentinel.v1alpha1.WatchGpusResponse.object:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
+	6,  // 10: nvidia.nvsentinel.v1alpha1.GpuService.GetGpu:input_type -> nvidia.nvsentinel.v1alpha1.GetGpuRequest
+	8,  // 11: nvidia.nvsentinel.v1alpha1.GpuService.ListGpus:input_type -> nvidia.nvsentinel.v1alpha1.ListGpusRequest
+	10, // 12: nvidia.nvsentinel.v1alpha1.GpuService.WatchGpus:input_type -> nvidia.nvsentinel.v1alpha1.WatchGpusRequest
+	7,  // 13: nvidia.nvsentinel.v1alpha1.GpuService.GetGpu:output_type -> nvidia.nvsentinel.v1alpha1.GetGpuResponse
+	9,  // 14: nvidia.nvsentinel.v1alpha1.GpuService.ListGpus:output_type -> nvidia.nvsentinel.v1alpha1.ListGpusResponse
+	11, // 15: nvidia.nvsentinel.v1alpha1.GpuService.WatchGpus:output_type -> nvidia.nvsentinel.v1alpha1.WatchGpusResponse
+	13, // [13:16] is the sub-list for method output_type
+	10, // [10:13] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_device_v1alpha1_gpu_proto_init() }
@@ -744,13 +824,14 @@ func file_device_v1alpha1_gpu_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_device_v1alpha1_gpu_proto_rawDesc), len(file_device_v1alpha1_gpu_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_device_v1alpha1_gpu_proto_goTypes,
 		DependencyIndexes: file_device_v1alpha1_gpu_proto_depIdxs,
+		EnumInfos:         file_device_v1alpha1_gpu_proto_enumTypes,
 		MessageInfos:      file_device_v1alpha1_gpu_proto_msgTypes,
 	}.Build()
 	File_device_v1alpha1_gpu_proto = out.File
