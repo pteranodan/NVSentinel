@@ -18,7 +18,8 @@ package v1alpha1
 type GPUConditionType string
 
 // These are valid but not exhaustive conditions of a GPU.
-// Relevant events contain 'Ready', 'Degraded', 'ResetRequired', and 'HardwareFailure'.
+// Relevant events contain 'Ready', 'Degraded', 'ResetRequired', and
+// 'HardwareFailure'.
 const (
 	// GPUReady indicates whether the GPU is healthy and ready to accept work.
 	// Status="True" means the GPU is healthy. Status="False" means the GPU is unhealthy
