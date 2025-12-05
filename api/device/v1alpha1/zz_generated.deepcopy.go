@@ -87,7 +87,7 @@ func (in *GPUStatus) DeepCopyInto(out *GPUStatus) {
 	}
 	if in.RecommendedActions != nil {
 		in, out := &in.RecommendedActions, &out.RecommendedActions
-		*out = make([]string, len(*in))
+		*out = make([]RecommendedAction, len(*in))
 		copy(*out, *in)
 	}
 	return

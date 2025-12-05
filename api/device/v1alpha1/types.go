@@ -81,8 +81,7 @@ type GPUStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// RecommendedActions is a list of suggested remediation steps to
-	// resolve the issues reported in Conditions. Examples: "ResetGPU",
-	// "RebootNode", "ReportIssue".
+	// resolve the issues reported in Conditions.
 	// +optional
-	RecommendedActions []string `json:"recommendedActions,omitempty"`
+	RecommendedActions []RecommendedAction `json:"recommendedActions,omitempty"`
 }

@@ -41,9 +41,9 @@ func TestGPURoundTrip(t *testing.T) {
 					Message:            "Driver failed to load",
 				},
 			},
-			RecommendedActions: []string{
-				string(RecommendedActionResetGPU),
-				string(RecommendedActionReportIssue),
+			RecommendedActions: []RecommendedAction{
+				RecommendedActionResetGPU,
+				RecommendedActionReportIssue,
 			},
 		},
 	}
@@ -79,8 +79,8 @@ func TestGPUListRoundTrip(t *testing.T) {
 							Message:            "Driver failed to load",
 						},
 					},
-					RecommendedActions: []string{
-						string(RecommendedActionResetGPU),
+					RecommendedActions: []RecommendedAction{
+						RecommendedActionResetGPU,
 					},
 				},
 			},
@@ -100,7 +100,7 @@ func TestGPUListRoundTrip(t *testing.T) {
 							Message:            "GPU is healthy",
 						},
 					},
-					RecommendedActions: []string{},
+					RecommendedActions: []RecommendedAction{},
 				},
 			},
 		},

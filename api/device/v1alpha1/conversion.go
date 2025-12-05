@@ -209,11 +209,11 @@ func StatusFromProto(in *pb.GpuStatus) *GPUStatus {
 		}
 	}
 
-	var actions []string
+	var actions []RecommendedAction
 	if in.RecommendedActions != nil {
-		actions = make([]string, 0, len(in.RecommendedActions))
+		actions = make([]RecommendedAction, 0, len(in.RecommendedActions))
 		for _, a := range in.RecommendedActions {
-			actions = append(actions, string(a))
+			actions = append(actions, RecommendedAction(a))
 		}
 	}
 
