@@ -223,8 +223,10 @@ func (x *GpuSpec) GetModel() string {
 // GpuStatus defines the observed state of a single GPU.
 type GpuStatus struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
-	Conditions         []*Condition           `protobuf:"bytes,1,rep,name=conditions,proto3" json:"conditions,omitempty"`
-	RecommendedActions []string               `protobuf:"bytes,2,rep,name=recommended_actions,json=recommendedActions,proto3" json:"recommended_actions,omitempty"`
+	ObservedGeneration int64                  `protobuf:"varint,1,opt,name=observed_generation,json=observedGeneration,proto3" json:"observed_generation,omitempty"`
+	LastProbeTime      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=last_probe_time,json=lastProbeTime,proto3" json:"last_probe_time,omitempty"`
+	Conditions         []*Condition           `protobuf:"bytes,3,rep,name=conditions,proto3" json:"conditions,omitempty"`
+	RecommendedActions []string               `protobuf:"bytes,4,rep,name=recommended_actions,json=recommendedActions,proto3" json:"recommended_actions,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -257,6 +259,20 @@ func (x *GpuStatus) ProtoReflect() protoreflect.Message {
 // Deprecated: Use GpuStatus.ProtoReflect.Descriptor instead.
 func (*GpuStatus) Descriptor() ([]byte, []int) {
 	return file_device_v1alpha1_gpu_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GpuStatus) GetObservedGeneration() int64 {
+	if x != nil {
+		return x.ObservedGeneration
+	}
+	return 0
+}
+
+func (x *GpuStatus) GetLastProbeTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastProbeTime
+	}
+	return nil
 }
 
 func (x *GpuStatus) GetConditions() []*Condition {
@@ -636,12 +652,14 @@ const file_device_v1alpha1_gpu_proto_rawDesc = "" +
 	"\fdevice_index\x18\x03 \x01(\x05R\vdeviceIndex\x12\x1f\n" +
 	"\vpci_address\x18\x04 \x01(\tR\n" +
 	"pciAddress\x12\x14\n" +
-	"\x05model\x18\x05 \x01(\tR\x05model\"\x83\x01\n" +
-	"\tGpuStatus\x12E\n" +
+	"\x05model\x18\x05 \x01(\tR\x05model\"\xf8\x01\n" +
+	"\tGpuStatus\x12/\n" +
+	"\x13observed_generation\x18\x01 \x01(\x03R\x12observedGeneration\x12B\n" +
+	"\x0flast_probe_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\rlastProbeTime\x12E\n" +
 	"\n" +
-	"conditions\x18\x01 \x03(\v2%.nvidia.nvsentinel.v1alpha1.ConditionR\n" +
+	"conditions\x18\x03 \x03(\v2%.nvidia.nvsentinel.v1alpha1.ConditionR\n" +
 	"conditions\x12/\n" +
-	"\x13recommended_actions\x18\x02 \x03(\tR\x12recommendedActions\"\xb7\x01\n" +
+	"\x13recommended_actions\x18\x04 \x03(\tR\x12recommendedActions\"\xb7\x01\n" +
 	"\tCondition\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12L\n" +
@@ -697,22 +715,23 @@ var file_device_v1alpha1_gpu_proto_depIdxs = []int32{
 	2,  // 0: nvidia.nvsentinel.v1alpha1.Gpu.spec:type_name -> nvidia.nvsentinel.v1alpha1.GpuSpec
 	3,  // 1: nvidia.nvsentinel.v1alpha1.Gpu.status:type_name -> nvidia.nvsentinel.v1alpha1.GpuStatus
 	0,  // 2: nvidia.nvsentinel.v1alpha1.GpuList.items:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
-	4,  // 3: nvidia.nvsentinel.v1alpha1.GpuStatus.conditions:type_name -> nvidia.nvsentinel.v1alpha1.Condition
-	11, // 4: nvidia.nvsentinel.v1alpha1.Condition.last_transition_time:type_name -> google.protobuf.Timestamp
-	0,  // 5: nvidia.nvsentinel.v1alpha1.GetGpuResponse.gpu:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
-	1,  // 6: nvidia.nvsentinel.v1alpha1.ListGpusResponse.gpu_list:type_name -> nvidia.nvsentinel.v1alpha1.GpuList
-	0,  // 7: nvidia.nvsentinel.v1alpha1.WatchGpusResponse.object:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
-	5,  // 8: nvidia.nvsentinel.v1alpha1.GpuService.GetGpu:input_type -> nvidia.nvsentinel.v1alpha1.GetGpuRequest
-	7,  // 9: nvidia.nvsentinel.v1alpha1.GpuService.ListGpus:input_type -> nvidia.nvsentinel.v1alpha1.ListGpusRequest
-	9,  // 10: nvidia.nvsentinel.v1alpha1.GpuService.WatchGpus:input_type -> nvidia.nvsentinel.v1alpha1.WatchGpusRequest
-	6,  // 11: nvidia.nvsentinel.v1alpha1.GpuService.GetGpu:output_type -> nvidia.nvsentinel.v1alpha1.GetGpuResponse
-	8,  // 12: nvidia.nvsentinel.v1alpha1.GpuService.ListGpus:output_type -> nvidia.nvsentinel.v1alpha1.ListGpusResponse
-	10, // 13: nvidia.nvsentinel.v1alpha1.GpuService.WatchGpus:output_type -> nvidia.nvsentinel.v1alpha1.WatchGpusResponse
-	11, // [11:14] is the sub-list for method output_type
-	8,  // [8:11] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	11, // 3: nvidia.nvsentinel.v1alpha1.GpuStatus.last_probe_time:type_name -> google.protobuf.Timestamp
+	4,  // 4: nvidia.nvsentinel.v1alpha1.GpuStatus.conditions:type_name -> nvidia.nvsentinel.v1alpha1.Condition
+	11, // 5: nvidia.nvsentinel.v1alpha1.Condition.last_transition_time:type_name -> google.protobuf.Timestamp
+	0,  // 6: nvidia.nvsentinel.v1alpha1.GetGpuResponse.gpu:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
+	1,  // 7: nvidia.nvsentinel.v1alpha1.ListGpusResponse.gpu_list:type_name -> nvidia.nvsentinel.v1alpha1.GpuList
+	0,  // 8: nvidia.nvsentinel.v1alpha1.WatchGpusResponse.object:type_name -> nvidia.nvsentinel.v1alpha1.Gpu
+	5,  // 9: nvidia.nvsentinel.v1alpha1.GpuService.GetGpu:input_type -> nvidia.nvsentinel.v1alpha1.GetGpuRequest
+	7,  // 10: nvidia.nvsentinel.v1alpha1.GpuService.ListGpus:input_type -> nvidia.nvsentinel.v1alpha1.ListGpusRequest
+	9,  // 11: nvidia.nvsentinel.v1alpha1.GpuService.WatchGpus:input_type -> nvidia.nvsentinel.v1alpha1.WatchGpusRequest
+	6,  // 12: nvidia.nvsentinel.v1alpha1.GpuService.GetGpu:output_type -> nvidia.nvsentinel.v1alpha1.GetGpuResponse
+	8,  // 13: nvidia.nvsentinel.v1alpha1.GpuService.ListGpus:output_type -> nvidia.nvsentinel.v1alpha1.ListGpusResponse
+	10, // 14: nvidia.nvsentinel.v1alpha1.GpuService.WatchGpus:output_type -> nvidia.nvsentinel.v1alpha1.WatchGpusResponse
+	12, // [12:15] is the sub-list for method output_type
+	9,  // [9:12] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_device_v1alpha1_gpu_proto_init() }

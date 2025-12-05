@@ -105,10 +105,20 @@ func (in *GPUStatus) ToProto() *pb.GpuStatus {
 		}
 	}
 
-	return &pb.GpuStatus{
+	status := &pb.GpuStatus{
 		Conditions:         pbConds,
 		RecommendedActions: pbActions,
 	}
+
+	if in.ObservedGeneration != 0 {
+		status.ObservedGeneration = in.ObservedGeneration
+	}
+
+	if in.LastProbeTime != nil {
+		status.LastProbeTime = timestamppb.New(in.LastProbeTime.Time)
+	}
+
+	return status
 }
 
 // ConditionToProto converts a k8s Condition to a Proto Condition.
@@ -207,10 +217,21 @@ func StatusFromProto(in *pb.GpuStatus) *GPUStatus {
 		}
 	}
 
-	return &GPUStatus{
+	status := &GPUStatus{
 		Conditions:         conds,
 		RecommendedActions: actions,
 	}
+
+	if in.ObservedGeneration != 0 {
+		status.ObservedGeneration = in.ObservedGeneration
+	}
+
+	if in.LastProbeTime != nil {
+		lastProbe := metav1.NewTime(in.LastProbeTime.AsTime())
+		status.LastProbeTime = &lastProbe
+	}
+
+	return status
 }
 
 func ConditionFromProto(in *pb.Condition) metav1.Condition {
