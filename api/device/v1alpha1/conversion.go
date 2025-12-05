@@ -112,6 +112,7 @@ func ConditionToProto(in metav1.Condition) *pb.Condition {
 // Proto -> Go
 // =============================================================================
 
+// GPUFromProto converts a Proto Gpu message to the Go GPU type.
 func GPUFromProto(in *pb.Gpu) *GPU {
 	if in == nil {
 		return nil
@@ -124,6 +125,7 @@ func GPUFromProto(in *pb.Gpu) *GPU {
 	}
 }
 
+// GPUListFromProto converts a Proto GpuList message to the Go GPUList type.
 func GPUListFromProto(in *pb.GpuList) *GPUList {
 	if in == nil {
 		return nil
@@ -144,6 +146,7 @@ func GPUListFromProto(in *pb.GpuList) *GPUList {
 	}
 }
 
+// SpecFromProto converts a Proto GpuSpec message to the Go GPUSpec type.
 func SpecFromProto(in *pb.GpuSpec) *GPUSpec {
 	if in == nil {
 		return &GPUSpec{}
@@ -155,6 +158,7 @@ func SpecFromProto(in *pb.GpuSpec) *GPUSpec {
 	}
 }
 
+// StatusFromProto converts a Proto GpuStatus message to the Go GPUStatus type.
 func StatusFromProto(in *pb.GpuStatus) *GPUStatus {
 	if in == nil {
 		return &GPUStatus{}
@@ -184,6 +188,7 @@ func StatusFromProto(in *pb.GpuStatus) *GPUStatus {
 	}
 }
 
+// ConditionFromProto converts a Proto Condition to a k8s Condition.
 func ConditionFromProto(in *pb.Condition) metav1.Condition {
 	if in == nil {
 		return metav1.Condition{}
