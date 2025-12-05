@@ -12,7 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package v1alpha1 defines the device health API types and conversion
+// utilities for GPU health monitoring in Kubernetes environments.
+//
+// This package provides Go types that follow Kubernetes API conventions
+// (spec/status pattern) and support bidirectional conversion to/from
+// Protocol Buffer messages for gRPC communication. It enables Kubernetes
+// controllers to receive GPU device health information from custom health
+// providers.
+//
+// Key types:
+//   - GPU: Represents a single GPU resource with spec and status
+//   - GPUStatus: Contains conditions and recommended remediation actions
+//   - GPUConditionType: Defines health states (Ready, Degraded, etc.)
+//
+// The API uses metav1.Condition for status reporting, making it compatible
+// with standard Kubernetes condition patterns and enabling integration with
+// tools like node-problem-detector.
+//
 // +k8s:deepcopy-gen=package
 // +k8s:defaulter-gen=package
-
 package v1alpha1
