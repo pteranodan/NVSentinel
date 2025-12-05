@@ -54,8 +54,9 @@ type GPUSpec struct {
 // GPUStatus describes the observed state of a single GPU.
 type GPUStatus struct {
 	// Conditions represents the observations of a GPU's current state.
-	// Known condition types are "Ready", "Degraded", "ResetRequired", and "HardwareFailure".
-	// The 'Reason' field in each condition corresponds to specific error patterns (e.g., "DoubleBitECCError", "GPUFallenOffBus").
+	// Known condition types are "Ready", "Degraded", "ResetRequired", and
+	// "HardwareFailure". The 'Reason' field in each condition corresponds to
+	// specific error patterns (e.g., "DoubleBitECCError", "GPUFallenOffBus").
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 

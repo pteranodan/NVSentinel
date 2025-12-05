@@ -123,16 +123,19 @@ const (
 	ResetRequiredReasonNVLinkError ResetRequiredReason = "NVLinkError"
 )
 
-// HardwareFailureReason defines the reasons for the 'HardwareFailure' condition.
+// HardwareFailureReason defines the reasons for the 'HardwareFailure'
+// condition.
 type HardwareFailureReason string
 
-// These are valid but not exhaustive reasons for the 'HardwareFailure' condition.
+// These are valid but not exhaustive reasons for the 'HardwareFailure'
+// condition.
 const (
 	// HardwareFailureReasonNoFailure indicates that no hardware failure has been detected.
 	// This corresponds to HardwareFailure=False.
 	HardwareFailureReasonNoFailure HardwareFailureReason = "NoFailure"
 
-	// HardwareFailureReasonStatusUnknown indicates that it could not be determined whether the device has a hardware failure.
+	// HardwareFailureReasonStatusUnknown indicates that it could not be
+	// determined whether the device has a hardware failure.
 	HardwareFailureReasonStatusUnknown HardwareFailureReason = "StatusUnknown"
 
 	// -- Unrecoverable Memory Failures --
@@ -141,8 +144,9 @@ const (
 	// has exceeded the RMA threshold.
 	HardwareFailureReasonRowRemappingThresholdExceeded HardwareFailureReason = "RowRemappingThresholdExceeded"
 
-	// HardwareFailureReasonSRAMUncorrectableErrorThresholdExceeded indicates that the aggregate
-	// SRAM uncorrectable error count has exceeded the RMA threshold.
+	// HardwareFailureReasonSRAMUncorrectableErrorThresholdExceeded indicates
+	// that the aggregate SRAM uncorrectable error count has exceeded the RMA
+	// threshold.
 	HardwareFailureReasonSRAMUncorrectableErrorThresholdExceeded HardwareFailureReason = "SRAMUncorrectableErrorThresholdExceeded"
 
 	// -- Connection Failures --
