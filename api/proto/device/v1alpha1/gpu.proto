@@ -35,18 +35,24 @@ message Gpu {
   // Example: "gpu-a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6"
   string name = 1;
 
+  // resource_version represents the internal version of this object.
+  string resource_version = 2;
+
   // spec defines the identity and desired attributes of the GPU resource.
-  GpuSpec spec = 2;
+  GpuSpec spec = 3;
 
   // status contains the most recently observed state of the GPU resource.
   // This data may lag slightly behind the actual on-device state.
-  GpuStatus status = 3;
+  GpuStatus status = 4;
 }
 
 // GpuList is a collection of GPU resources.
 message GpuList {
+  // resource_version represents the internal version of this object.
+  string resource_version = 1;
+
   // items is the list of GPU resources.
-  repeated Gpu items = 1;
+  repeated Gpu items = 2;
 }
 
 // GpuSpec describes the identity and desired attributes of the GPU.
@@ -133,10 +139,10 @@ message ListGpusResponse {
 }
 
 // WatchGpusRequest specifies the parameters for the watch stream.
-//
-// NOTE: The request is currently empty, but reserved for future support
-// of filtering and resource versioning (resumption).
-message WatchGpusRequest {}
+message WatchGpusRequest {
+  // resource_version allows the client to start watching at a specific version.
+  string resource_version = 1;
+}
 
 // WatchGpusResponse describes a change event for a GPU resource.
 message WatchGpusResponse {
