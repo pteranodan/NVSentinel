@@ -42,8 +42,8 @@ func TestGPURoundTrip(t *testing.T) {
 				},
 			},
 			RecommendedActions: []string{
-				string(RecommendedActionResetGPU),
-				string(RecommendedActionReportIssue),
+				"ResetGPU",
+				"ReportIssue",
 			},
 		},
 	}
@@ -80,7 +80,7 @@ func TestGPUListRoundTrip(t *testing.T) {
 						},
 					},
 					RecommendedActions: []string{
-						string(RecommendedActionResetGPU),
+						"ResetGPU",
 					},
 				},
 			},

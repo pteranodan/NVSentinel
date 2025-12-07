@@ -22,6 +22,7 @@ package protos
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -91,7 +92,7 @@ type UnsafePlatformConnectorServer interface {
 }
 
 func RegisterPlatformConnectorServer(s grpc.ServiceRegistrar, srv PlatformConnectorServer) {
-	// If the following call pancis, it indicates UnimplementedPlatformConnectorServer was
+	// If the following call panics, it indicates UnimplementedPlatformConnectorServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.

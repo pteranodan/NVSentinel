@@ -101,20 +101,9 @@ func local_request_GpuService_ListGpus_0(ctx context.Context, marshaler runtime.
 
 }
 
-var (
-	filter_GpuService_WatchGpus_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
-)
-
 func request_GpuService_WatchGpus_0(ctx context.Context, marshaler runtime.Marshaler, client GpuServiceClient, req *http.Request, pathParams map[string]string) (GpuService_WatchGpusClient, runtime.ServerMetadata, error) {
 	var protoReq WatchGpusRequest
 	var metadata runtime.ServerMetadata
-
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_GpuService_WatchGpus_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
 
 	stream, err := client.WatchGpus(ctx, &protoReq)
 	if err != nil {

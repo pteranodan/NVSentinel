@@ -48,19 +48,30 @@ type GPUSpec struct {
 	ID string `json:"id"`
 	// NodeName is the name of the node where the GPU is located.
 	NodeName string `json:"nodeName"`
+	// PCIAddress is the PCIe bus address (e.g., "0000:07:00.0").
+	// +optional
+	PCIAddress string `json:"pciAddress,omitempty"`
 }
 
 // +k8s:deepcopy-gen=true
 // GPUStatus describes the observed state of a single GPU.
 type GPUStatus struct {
+	// LastProbeTime is the timestamp when the GPU health was last checked.
+	// +optional
+	LastProbeTime *metav1.Time `json:"lastProbeTime,omitempty"`
+
 	// Conditions represents the observations of a GPU's current state.
-	// Known condition types are "Ready", "Degraded", "ResetRequired", and "HardwareFailure".
-	// The 'Reason' field in each condition corresponds to specific error patterns (e.g., "DoubleBitECCError", "GPUFallenOffBus").
+	// Known condition types are "Ready", "Degraded", "ResetRequired", and
+	// "HardwareFailure". The 'Reason' field in each condition corresponds
+	// to specific error patterns (e.g., "DoubleBitECCError",
+	// "GPUFallenOffBus"). Each condition includes an ObservedGeneration
+	// field to track which spec generation the condition applies to.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// RecommendedActions is a list of suggested remediation steps to resolve the issues reported in Conditions.
-	// Examples: "ResetGPU", "RebootNode", "ReportIssue".
+	// RecommendedActions is a list of suggested remediation steps to
+	// resolve the issues reported in Conditions. Examples: "ResetGPU",
+	// "RebootNode", "ReportIssue".
 	// +optional
 	RecommendedActions []string `json:"recommendedActions,omitempty"`
 }
