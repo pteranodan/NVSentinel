@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// +groupName=device.nvidia.com
+
 // Package v1alpha1 contains the API Schema definitions for the device.nvidia.com v1alpha1 API group.
 // This package includes types for GPU resources and conversions between Kubernetes and protobuf representations.
 package v1alpha1

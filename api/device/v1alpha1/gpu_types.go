@@ -46,6 +46,10 @@ type GPUStatus struct {
 
 // GPU represents a single GPU resource.
 //
+// +genclient
+// +genclient:nonNamespaced
+// +genclient:onlyVerbs=get,list,watch
+// +genclient:noStatus
 // +k8s:deepcopy-gen=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type GPU struct {
@@ -64,8 +68,4 @@ type GPUList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []GPU `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(&GPU{}, &GPUList{})
 }
