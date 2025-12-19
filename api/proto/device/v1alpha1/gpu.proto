@@ -24,16 +24,42 @@ import "google/protobuf/timestamp.proto";
 // Resource Definitions
 // ==========================================
 
+// ObjectMeta is a subset of k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta.
+message ObjectMeta {
+  // name is the unique logical identifier of the resource.
+  string name = 1;
+
+  // resource_version represents the internal version of this object.
+  //
+  // Value must be treated as opaque by clients and passed unmodified back to the server.
+	// Populated by the system.
+	// Read-only.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+  string resource_version = 2;
+}
+
+// ListMeta is a subset of k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta.
+message ListMeta {
+  // resource_version identifies the version of the list snapshot.
+  // Clients can use this version to establish a watch from a consistent point in time.
+  //
+  // Value must be treated as opaque by clients and passed unmodified back to the server.
+  // Populated by the system.
+  // Read-only.
+  // More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+  string resource_version = 1;
+}
+
 // Gpu represents a single GPU resource.
 //
 // Its structure follows the Kubernetes Resource Model pattern (Spec/Status).
+//
+// The resource name (metadata.name) is typically the lowercased GPU UUID, 
+// but may take other forms.
+//
+// Example: "gpu-a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6"
 message Gpu {
-  // name is the unique logical identifier of the GPU resource.
-  //
-  // This is typically the lowercased GPU UUID, but may take other forms.
-  //
-  // Example: "gpu-a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6"
-  string name = 1;
+  ObjectMeta metadata = 1;
 
   // spec defines the identity and desired attributes of the GPU resource.
   GpuSpec spec = 2;
@@ -45,8 +71,10 @@ message Gpu {
 
 // GpuList is a collection of GPU resources.
 message GpuList {
+  ListMeta metadata = 1;
+
   // items is the list of GPU resources.
-  repeated Gpu items = 1;
+  repeated Gpu items = 2;
 }
 
 // GpuSpec describes the identity and desired attributes of the GPU.
@@ -121,10 +149,10 @@ message GetGpuResponse {
 }
 
 // ListGpusRequest specifies the criteria for listing GPU resources.
-//
-// NOTE: The request is currently empty, but reserved for future support
-// of filtering and pagination.
-message ListGpusRequest {}
+message ListGpusRequest {
+  // resource_version allows the client to list resources at a specific version.
+  string resource_version = 1;
+}
 
 // ListGpusResponse contains the list of GPU resources.
 message ListGpusResponse {
@@ -133,10 +161,10 @@ message ListGpusResponse {
 }
 
 // WatchGpusRequest specifies the parameters for the watch stream.
-//
-// NOTE: The request is currently empty, but reserved for future support
-// of filtering and resource versioning (resumption).
-message WatchGpusRequest {}
+message WatchGpusRequest {
+  // resource_version allows the client to start watching at a specific version.
+  string resource_version = 1;
+}
 
 // WatchGpusResponse describes a change event for a GPU resource.
 message WatchGpusResponse {
