@@ -46,6 +46,9 @@ go_tools:
   setup_envtest: 'latest'
   goimports: 'v0.30.0'
   crane: 'v0.20.2'
+  deepcopy_gen: 'v0.34.2'
+  goverter: 'v1.9.2'
+  kubernetes_code_gen: 'v0.34.2'
 
 # Protocol Buffers / gRPC
 protobuf:
