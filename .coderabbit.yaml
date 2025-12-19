@@ -16,3 +16,9 @@ reviews:
   profile: chill
   auto_review:
     enabled: true
+  path_filters:
+    - "!api/gen/**"               # Ignore generated protobuf bindings
+    - "!api/**/zz_generated.*"    # Ignore generated deepcopy and conversion code
+    - "!client-go/client/**"      # Ignore generated clientset
+    - "!client-go/listers/**"     # Ignore generated listers
+    - "!client-go/informers/**"   # Ignore generated informers

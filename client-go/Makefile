@@ -22,7 +22,8 @@ EMPTY :=
 SPACE := $(EMPTY) $(EMPTY)
 
 # Modules
-MODULE_NAME := github.com/nvidia/nvsentinel/api
+MODULE_NAME := github.com/nvidia/nvsentinel/client-go
+API_MODULE  := github.com/nvidia/nvsentinel/api
 
 # API Versions (space-separated)
 API_VERSIONS := device/v1alpha1
@@ -30,18 +31,25 @@ API_VERSIONS := device/v1alpha1
 # Helper for tools that need comma-separated Group/Versions
 API_VERSIONS_COMMA := $(subst $(SPACE),$(COMMA),$(API_VERSIONS))
 
-# Helper for tools that need full package paths
-API_PKGS := $(foreach version,$(API_VERSIONS),$(MODULE_NAME)/$(version))
-
-#Helper for tools that need comma-separated package paths
-API_PKGS_COMMA := $(subst $(SPACE),$(COMMA),$(API_PKGS))
+# Helper for tools that need full package paths (e.g., listers/informers)
+API_PKGS := $(foreach version,$(API_VERSIONS),$(API_MODULE)/$(version))
 
 # Common
 BOILERPLATE := hack/boilerplate.go.txt
 
+# Client Version
+GIT_VERSION     ?= $(shell git describe --tags --always --dirty)
+VERSION_PACKAGE := $(MODULE_NAME)/version
+VERSION_FLAGS   := -X '$(VERSION_PACKAGE).GitVersion=$(GIT_VERSION)'
+
+# Linker Flags
+EXTRA_LDFLAGS ?=
+LDFLAGS       := -ldflags "$(VERSION_FLAGS) $(EXTRA_LDFLAGS)"
+
 # Directories
-PROTO_DIR := proto
-GEN_DIR   := gen/go
+CLIENT_DIR   := client
+LISTER_DIR   := listers
+INFORMER_DIR := informers
 
 # Shell setup
 SHELL = /usr/bin/env bash -o pipefail
@@ -59,10 +67,9 @@ ifeq ($(GO_VERSION),)
 endif
 
 # Tool Binaries
-PROTOC_GEN_GO      ?= $(LOCALBIN)/protoc-gen-go
-PROTOC_GEN_GO_GRPC ?= $(LOCALBIN)/protoc-gen-go-grpc
-DEEPCOPY_GEN       ?= $(LOCALBIN)/deepcopy-gen
-GOVERTER           ?= $(LOCALBIN)/goverter
+CLIENT_GEN      := $(LOCALBIN)/client-gen
+LISTER_GEN      := $(LOCALBIN)/lister-gen
+INFORMER_GEN    := $(LOCALBIN)/informer-gen
 
 # Tool Versions (load from ../.versions.yaml)
 # Requires yq to be installed: brew install yq (macOS) or see https://github.com/mikefarah/yq
@@ -73,10 +80,7 @@ endif
 
 VERSIONS_FILE := ../.versions.yaml
 
-PROTOC_GEN_GO_VERSION      := $(shell $(YQ) '.protobuf.protoc_gen_go' $(VERSIONS_FILE))
-PROTOC_GEN_GO_GRPC_VERSION := $(shell $(YQ) '.protobuf.protoc_gen_go_grpc' $(VERSIONS_FILE))
 KUBERNETES_CODEGEN_VERSION := $(shell $(YQ) '.go_tools.kubernetes_code_gen' $(VERSIONS_FILE))
-GOVERTER_VERSION           := $(shell $(YQ) '.go_tools.goverter' $(VERSIONS_FILE))
 
 # ==============================================================================
 # Targets
@@ -94,72 +98,77 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: code-gen
-code-gen: install-tools protos-generate deepcopy-gen conversion-gen ## Run all code generation targets.
+code-gen: install-tools client-gen copy-overlays lister-gen informer-gen ## Run all code generation targets.
 	@echo "Synchronizing module dependencies..."
 	go mod tidy
 
 .PHONY: build
 build: code-gen ## Compile all Go code after generation to verify type safety.
 	@echo "Compiling..."
-	go build -v ./...
+	go build -v $(LDFLAGS) $$(go list ./... | grep -vE '/hack/overlays/|/examples/')
 
 .PHONY: test
 test: code-gen ## Run unit tests and generate coverage after code generation.
 	@echo "Testing..."
-	go test -v $$(go list ./... | grep -v /gen/) -coverprofile cover.out
+	go test -v $$(go list ./... | grep -vE '/hack/overlays/|/listers/|informers/|/fake|/scheme|/typed/|/examples/') -coverprofile cover.out
 
-.PHONY: protos-generate
-protos-generate: $(PROTOC_GEN_GO) $(PROTOC_GEN_GO_GRPC) clean-protos ## Generate Protobuf Go bindings.
-	@echo "Generating protobuf bindings for $(API_VERSIONS_COMMA)..."
-	@mkdir -p $(GEN_DIR)
-	@$(foreach version,$(API_VERSIONS), \
-		cd $(PROTO_DIR) && protoc \
-			-I . \
-			--plugin="protoc-gen-go=$(PROTOC_GEN_GO)" \
-			--plugin="protoc-gen-go-grpc=$(PROTOC_GEN_GO_GRPC)" \
-			--go_out="../$(GEN_DIR)" \
-			--go_opt=paths="source_relative" \
-			--go-grpc_out="../$(GEN_DIR)" \
-			--go-grpc_opt=paths="source_relative" \
-			$(version)/*.proto; \
-	)
-
-.PHONY: deepcopy-gen
-deepcopy-gen: $(DEEPCOPY_GEN) clean-deepcopy ## Generate deepcopy code.
-	@echo "Generating deepcopy code for $(API_VERSIONS_COMMA)..."
-	$(DEEPCOPY_GEN) \
-		--bounding-dirs="$(API_PKGS_COMMA)" \
+.PHONY: client-gen
+client-gen: $(CLIENT_GEN) clean-client ## Generate client code.
+	@echo "Generating client code for $(API_VERSIONS_COMMA)..."
+	$(CLIENT_GEN) \
+		--input-base="$(API_MODULE)" \
+		--input="$(API_VERSIONS_COMMA)" \
+		--output-pkg="$(MODULE_NAME)/client" \
+		--output-dir="$(CLIENT_DIR)" \
 		--go-header-file="$(BOILERPLATE)" \
-		--output-file="zz_generated.deepcopy.go" \
+		--clientset-name="versioned"
+
+.PHONY: lister-gen
+lister-gen: $(LISTER_GEN) clean-lister ## Generate lister code.
+	@echo "Generating lister code for $(API_VERSIONS)..."
+	$(LISTER_GEN) \
+		--output-pkg="$(MODULE_NAME)/listers" \
+		--output-dir="$(LISTER_DIR)" \
+		--go-header-file="$(BOILERPLATE)" \
 		$(API_PKGS)
 
-.PHONY: conversion-gen
-conversion-gen: $(GOVERTER) clean-conversion ## Generate conversion code.
-	@echo "Generating conversion code for $(API_VERSIONS_COMMA)..."
-	@$(foreach version,$(API_VERSIONS), \
-		$(GOVERTER) gen ./$(version); \
-	)
+.PHONY: informer-gen
+informer-gen: $(INFORMER_GEN) clean-informer ## Generate informer code.
+	@echo "Generating informer code for $(API_VERSIONS)..."
+	$(INFORMER_GEN) \
+		--output-pkg="$(MODULE_NAME)/informers" \
+		--output-dir="$(INFORMER_DIR)" \
+		--versioned-clientset-package="$(MODULE_NAME)/client/versioned" \
+		--listers-package="$(MODULE_NAME)/listers" \
+		--go-header-file="$(BOILERPLATE)" \
+		$(API_PKGS)
+
+.PHONY: copy-overlays
+copy-overlays:
+	@chmod +x hack/apply-overlays.sh
+	./hack/apply-overlays.sh
 
 .PHONY: clean
-clean: clean-protos clean-conversion clean-deepcopy ## Remove all generated code.
+clean: clean-client clean-lister clean-informer ## Remove all generated code.
+	rm -f cover.out
 
 .PHONY: purge
 purge: clean clean-bin ## Remove all generated code and downloaded tools.
 
-.PHONY: clean-protos
-clean-protos: ## Remove generated protobuf Go bindings.
-	@echo "Removing generated protobuf Go bindings..."
-	rm -rf $(GEN_DIR)
+.PHONY: clean-client
+clean-client: ## Remove generated client code
+	@echo "Removing generated client code for..."
+	rm -rf $(CLIENT_DIR)
 
-.PHONY: clean-deepcopy
-clean-deepcopy: ## Remove generated deepcopy code.
-	@echo "Removing generated deepcopy code..."
-	find . -name "zz_generated.deepcopy.go" -delete
+.PHONY: clean-lister
+clean-lister: ## Remove generated lister code.
+	@echo "Removing generated lister code..."
+	rm -rf $(LISTER_DIR)
 
-.PHONY: clean-conversion
-clean-conversion: ## Remove generated conversion code.
-	@echo "Removing generated conversion code..."
-	find . -name "zz_generated.conversion.go" -delete
+.PHONY: clean-informer
+clean-informer: ## Remove generated informer code.
+	@echo "Removing generated informer code..."
+	rm -rf $(INFORMER_DIR)
 
 .PHONY: clean-bin
 clean-bin: ## Remove all downloaded tools in localbin.
@@ -169,23 +178,22 @@ clean-bin: ## Remove all downloaded tools in localbin.
 ##@ Build Dependencies
 
 .PHONY: install-tools
-install-tools: install-tools-echo $(PROTOC_GEN_GO) $(PROTOC_GEN_GO_GRPC) $(DEEPCOPY_GEN) $(GOVERTER) ## Ensure all necessary build tools are downloaded and installed.
+install-tools: install-tools-echo $(CLIENT_GEN) $(LISTER_GEN) $(INFORMER_GEN) ## Ensure all necessary build tools are downloaded and installed.
 
 .PHONY: install-tools-echo
 install-tools-echo:
 	@echo "Installing dependencies..."
 
-$(PROTOC_GEN_GO):
-	$(call go-install-tool,$(PROTOC_GEN_GO),google.golang.org/protobuf/cmd/protoc-gen-go,$(PROTOC_GEN_GO_VERSION))
+tools: $(CLIENT_GEN) $(LISTER_GEN) $(INFORMER_GEN)
 
-$(PROTOC_GEN_GO_GRPC):
-	$(call go-install-tool,$(PROTOC_GEN_GO_GRPC),google.golang.org/grpc/cmd/protoc-gen-go-grpc,$(PROTOC_GEN_GO_GRPC_VERSION))
+$(CLIENT_GEN):
+	$(call go-install-tool,$(CLIENT_GEN),k8s.io/code-generator/cmd/client-gen,$(KUBERNETES_CODEGEN_VERSION))
 
-$(DEEPCOPY_GEN):
-	$(call go-install-tool,$(DEEPCOPY_GEN),k8s.io/code-generator/cmd/deepcopy-gen,$(KUBERNETES_CODEGEN_VERSION))
+$(LISTER_GEN):
+	$(call go-install-tool,$(LISTER_GEN),k8s.io/code-generator/cmd/lister-gen,$(KUBERNETES_CODEGEN_VERSION))
 
-$(GOVERTER):
-	$(call go-install-tool,$(GOVERTER),github.com/jmattheis/goverter/cmd/goverter,$(GOVERTER_VERSION))
+$(INFORMER_GEN):
+	$(call go-install-tool,$(INFORMER_GEN),k8s.io/code-generator/cmd/informer-gen,$(KUBERNETES_CODEGEN_VERSION))
 
 # go-install-tool macro
 # $1 - target path with name of binary

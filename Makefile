@@ -340,6 +340,7 @@ license-headers-lint: ## Check license headers in source files
 		-ignore '**/*.toml' \
 		-ignore '**/*lock.hcl' \
 		-ignore '**/*pb2*' \
+		-ignore '**/hack/**' \
 		.
 
 # Check go.mod files for proper replace directives

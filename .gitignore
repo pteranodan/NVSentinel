@@ -15,6 +15,7 @@
 *.so
 *.dylib
 api/bin/*
+client-go/bin/*
 
 # Test binary, built with `go test -c`
 *.test
