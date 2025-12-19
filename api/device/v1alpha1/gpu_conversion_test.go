@@ -45,8 +45,10 @@ func TestGPUConversion_Nil(t *testing.T) {
 func TestGPUConversion(t *testing.T) {
 
 	protoIn := &pb.Gpu{
-		Name:            "gpu-1111",
-		ResourceVersion: "1",
+		Metadata: &pb.ObjectMeta{
+			Name:            "gpu-1111",
+			ResourceVersion: "1",
+		},
 		Spec: &pb.GpuSpec{
 			Uuid: "GPU-1111",
 		},
@@ -66,7 +68,7 @@ func TestGPUConversion(t *testing.T) {
 
 	goStruct := FromProto(protoIn)
 
-	expectedName := strings.ToLower(protoIn.Name)
+	expectedName := strings.ToLower(protoIn.Metadata.Name)
 	if goStruct.ObjectMeta.Name != expectedName {
 		t.Errorf("ObjectMeta.Name conversion failed: got %q, want %q",
 			goStruct.ObjectMeta.Name, expectedName)
@@ -85,30 +87,17 @@ func TestGPUConversion(t *testing.T) {
 	}
 }
 
-func TestGPUConversion_NameNormalization(t *testing.T) {
-	protoIn := &pb.Gpu{
-		Name: "GPU-1111",
-		Spec: &pb.GpuSpec{
-			Uuid: "GPU-1111",
-		},
-	}
-
-	goStruct := FromProto(protoIn)
-
-	expectedName := strings.ToLower(protoIn.Name)
-	if goStruct.ObjectMeta.Name != expectedName {
-		t.Errorf("ObjectMeta.Name conversion failed: got %q, want %q",
-			goStruct.ObjectMeta.Name, expectedName)
-	}
-}
-
 func TestGPUListConversion(t *testing.T) {
 	protoIn := &pb.GpuList{
-		ResourceVersion: "2",
+		Metadata: &pb.ListMeta{
+			ResourceVersion: "2",
+		},
 		Items: []*pb.Gpu{
 			{
-				Name:            "gpu-1111",
-				ResourceVersion: "1",
+				Metadata: &pb.ObjectMeta{
+					Name:            "gpu-1111",
+					ResourceVersion: "1",
+				},
 				Spec: &pb.GpuSpec{
 					Uuid: "GPU-1111",
 				},
@@ -125,8 +114,10 @@ func TestGPUListConversion(t *testing.T) {
 				},
 			},
 			{
-				Name:            "gpu-2222",
-				ResourceVersion: "2",
+				Metadata: &pb.ObjectMeta{
+					Name:            "gpu-2222",
+					ResourceVersion: "2",
+				},
 				Spec: &pb.GpuSpec{
 					Uuid: "GPU-2222",
 				},

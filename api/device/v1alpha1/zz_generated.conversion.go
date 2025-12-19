@@ -14,7 +14,7 @@ func (c *ConverterImpl) FromProtobuf(source *v1alpha1.Gpu) GPU {
 	var v1alpha1GPU GPU
 	if source != nil {
 		v1alpha1GPU.TypeMeta = FromProtobufTypeMeta(source)
-		v1alpha1GPU.ObjectMeta = FromProtobufObjectMeta(source)
+		v1alpha1GPU.ObjectMeta = c.FromProtobufObjectMeta((*source).Metadata)
 		v1alpha1GPU.Spec = c.FromProtobufSpec((*source).Spec)
 		v1alpha1GPU.Status = c.FromProtobufStatus((*source).Status)
 	}
@@ -36,7 +36,7 @@ func (c *ConverterImpl) FromProtobufList(source *v1alpha1.GpuList) *GPUList {
 	if source != nil {
 		var v1alpha1GPUList GPUList
 		v1alpha1GPUList.TypeMeta = FromProtobufListTypeMeta(source)
-		v1alpha1GPUList.ListMeta = FromProtobufListMeta(source)
+		v1alpha1GPUList.ListMeta = c.FromProtobufListMeta((*source).Metadata)
 		if (*source).Items != nil {
 			v1alpha1GPUList.Items = make([]GPU, len((*source).Items))
 			for i := 0; i < len((*source).Items); i++ {
@@ -46,6 +46,21 @@ func (c *ConverterImpl) FromProtobufList(source *v1alpha1.GpuList) *GPUList {
 		pV1alpha1GPUList = &v1alpha1GPUList
 	}
 	return pV1alpha1GPUList
+}
+func (c *ConverterImpl) FromProtobufListMeta(source *v1alpha1.ListMeta) v1.ListMeta {
+	var v1ListMeta v1.ListMeta
+	if source != nil {
+		v1ListMeta.ResourceVersion = (*source).ResourceVersion
+	}
+	return v1ListMeta
+}
+func (c *ConverterImpl) FromProtobufObjectMeta(source *v1alpha1.ObjectMeta) v1.ObjectMeta {
+	var v1ObjectMeta v1.ObjectMeta
+	if source != nil {
+		v1ObjectMeta.Name = (*source).Name
+		v1ObjectMeta.ResourceVersion = (*source).ResourceVersion
+	}
+	return v1ObjectMeta
 }
 func (c *ConverterImpl) FromProtobufSpec(source *v1alpha1.GpuSpec) GPUSpec {
 	var v1alpha1GPUSpec GPUSpec
@@ -69,8 +84,7 @@ func (c *ConverterImpl) FromProtobufStatus(source *v1alpha1.GpuStatus) GPUStatus
 }
 func (c *ConverterImpl) ToProtobuf(source GPU) *v1alpha1.Gpu {
 	var v1alpha1Gpu v1alpha1.Gpu
-	v1alpha1Gpu.Name = source.ObjectMeta.Name
-	v1alpha1Gpu.ResourceVersion = source.ObjectMeta.ResourceVersion
+	v1alpha1Gpu.Metadata = c.ToProtobufObjectMeta(source.ObjectMeta)
 	v1alpha1Gpu.Spec = c.ToProtobufSpec(source.Spec)
 	v1alpha1Gpu.Status = c.ToProtobufStatus(source.Status)
 	return &v1alpha1Gpu
@@ -88,7 +102,7 @@ func (c *ConverterImpl) ToProtobufList(source *GPUList) *v1alpha1.GpuList {
 	var pV1alpha1GpuList *v1alpha1.GpuList
 	if source != nil {
 		var v1alpha1GpuList v1alpha1.GpuList
-		v1alpha1GpuList.ResourceVersion = (*source).ListMeta.ResourceVersion
+		v1alpha1GpuList.Metadata = c.ToProtobufListMeta((*source).ListMeta)
 		if (*source).Items != nil {
 			v1alpha1GpuList.Items = make([]*v1alpha1.Gpu, len((*source).Items))
 			for i := 0; i < len((*source).Items); i++ {
@@ -98,6 +112,17 @@ func (c *ConverterImpl) ToProtobufList(source *GPUList) *v1alpha1.GpuList {
 		pV1alpha1GpuList = &v1alpha1GpuList
 	}
 	return pV1alpha1GpuList
+}
+func (c *ConverterImpl) ToProtobufListMeta(source v1.ListMeta) *v1alpha1.ListMeta {
+	var v1alpha1ListMeta v1alpha1.ListMeta
+	v1alpha1ListMeta.ResourceVersion = source.ResourceVersion
+	return &v1alpha1ListMeta
+}
+func (c *ConverterImpl) ToProtobufObjectMeta(source v1.ObjectMeta) *v1alpha1.ObjectMeta {
+	var v1alpha1ObjectMeta v1alpha1.ObjectMeta
+	v1alpha1ObjectMeta.Name = source.Name
+	v1alpha1ObjectMeta.ResourceVersion = source.ResourceVersion
+	return &v1alpha1ObjectMeta
 }
 func (c *ConverterImpl) ToProtobufSpec(source GPUSpec) *v1alpha1.GpuSpec {
 	var v1alpha1GpuSpec v1alpha1.GpuSpec

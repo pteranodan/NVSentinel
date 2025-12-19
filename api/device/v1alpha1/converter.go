@@ -15,8 +15,6 @@
 package v1alpha1
 
 import (
-	"strings"
-
 	pb "github.com/nvidia/nvsentinel/api/gen/go/device/v1alpha1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,33 +25,52 @@ import (
 //
 // goverter:converter
 // goverter:output:file ./zz_generated.conversion.go
-// goverter:extend FromProtobufTypeMeta FromProtobufListTypeMeta FromProtobufObjectMeta FromProtobufListMeta FromProtobufTimestamp ToProtobufTimestamp
+// goverter:extend FromProtobufTypeMeta FromProtobufListTypeMeta FromProtobufTimestamp ToProtobufTimestamp
 // goverter:useZeroValueOnPointerInconsistency
 type Converter interface {
 	// FromProtobuf converts a protobuf Gpu message into a GPU object.
 	//
 	// goverter:map . TypeMeta | FromProtobufTypeMeta
-	// goverter:map . ObjectMeta | FromProtobufObjectMeta
+	// goverter:map Metadata ObjectMeta
 	FromProtobuf(source *pb.Gpu) GPU
 
 	// ToProtobuf converts a GPU object into a protobuf Gpu message.
 	//
-	// goverter:map ObjectMeta.Name Name
-	// goverter:map ObjectMeta.ResourceVersion ResourceVersion
+	// goverter:map ObjectMeta Metadata
 	// goverter:ignore state sizeCache unknownFields
 	ToProtobuf(source GPU) *pb.Gpu
 
 	// FromProtobufList converts a protobuf GpuList message into a GPUList object.
 	//
 	// goverter:map . TypeMeta | FromProtobufListTypeMeta
-	// goverter:map . ListMeta | FromProtobufListMeta
+	// goverter:map Metadata ListMeta
 	FromProtobufList(source *pb.GpuList) *GPUList
 
 	// ToProtobufList converts a GPUList object into a protobuf GpuList message.
 	//
-	// goverter:map ListMeta.ResourceVersion ResourceVersion
+	// goverter:map ListMeta Metadata
 	// goverter:ignore state sizeCache unknownFields
 	ToProtobufList(source *GPUList) *pb.GpuList
+
+	// FromProtobufObjectMeta converts a protobuf ObjectMeta into a metav1.ObjectMeta object.
+	//
+	// goverter:ignore Namespace GenerateName UID Generation CreationTimestamp DeletionTimestamp DeletionGracePeriodSeconds Labels Annotations OwnerReferences Finalizers ManagedFields SelfLink
+	FromProtobufObjectMeta(source *pb.ObjectMeta) metav1.ObjectMeta
+
+	// ToProtobufObjectMeta converts a metav1.ObjectMeta into a protobuf Object message.
+	//
+	// goverter:ignore state sizeCache unknownFields
+	ToProtobufObjectMeta(source metav1.ObjectMeta) *pb.ObjectMeta
+
+	// FromProtobufListMeta converts a protobuf ListMeta into a metav1.ListMeta object.
+	//
+	// goverter:ignore SelfLink Continue RemainingItemCount
+	FromProtobufListMeta(source *pb.ListMeta) metav1.ListMeta
+
+	// ToProtobufListMeta converts a metav1.ListMeta into a protobuf ListMeta message.
+	//
+	// goverter:ignore state sizeCache unknownFields
+	ToProtobufListMeta(source metav1.ListMeta) *pb.ListMeta
 
 	// FromProtobufSpec converts a protobuf GpuSpec message into a GPUSpec object.
 	//
@@ -69,7 +86,7 @@ type Converter interface {
 	// FromProtobufStatus converts a protobuf GpuStatus message into a GPUStatus object.
 	FromProtobufStatus(source *pb.GpuStatus) GPUStatus
 
-	// ToProtobufStatus converts a metav1.Condition object into a protobuf Condition message.
+	// ToProtobufStatus converts a GPUStatus object into a protobuf GpuStatus message.
 	//
 	// goverter:ignore state sizeCache unknownFields
 	ToProtobufStatus(source GPUStatus) *pb.GpuStatus
@@ -89,39 +106,16 @@ type Converter interface {
 // FromProtobufTypeMeta generates the standard TypeMeta for the root GPU resource.
 func FromProtobufTypeMeta(_ *pb.Gpu) metav1.TypeMeta {
 	return metav1.TypeMeta{
-		Kind:       GPUKind,
-		APIVersion: GroupVersion.String(),
+		Kind:       "GPU",
+		APIVersion: SchemeGroupVersion.Version,
 	}
 }
 
 // FromProtobufListTypeMeta generates the standard TypeMeta for the GPUList resource.
 func FromProtobufListTypeMeta(_ *pb.GpuList) metav1.TypeMeta {
 	return metav1.TypeMeta{
-		Kind:       GPUListKind,
-		APIVersion: GroupVersion.String(),
-	}
-}
-
-// FromProtobufObjectMeta converts protobuf fields into metav1.ObjectMeta.
-//
-// It explicitly lowercases the name field for Kubernetes DNS-1123 compliance.
-func FromProtobufObjectMeta(source *pb.Gpu) metav1.ObjectMeta {
-	if source == nil {
-		return metav1.ObjectMeta{}
-	}
-	return metav1.ObjectMeta{
-		Name:            strings.ToLower(source.Name),
-		ResourceVersion: source.ResourceVersion,
-	}
-}
-
-// FromProtobufListMeta converts protobuf fields into metav1.ListMeta.
-func FromProtobufListMeta(source *pb.GpuList) metav1.ListMeta {
-	if source == nil {
-		return metav1.ListMeta{}
-	}
-	return metav1.ListMeta{
-		ResourceVersion: source.ResourceVersion,
+		Kind:       "GPUList",
+		APIVersion: SchemeGroupVersion.Version,
 	}
 }
 

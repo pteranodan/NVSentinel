@@ -16,9 +16,29 @@
 # Configuration
 # ==============================================================================
 
+# Helpers for string manipulation
+COMMA := ,
+EMPTY :=
+SPACE := $(EMPTY) $(EMPTY)
+
+# Modules
+MODULE_NAME := github.com/nvidia/nvsentinel/api
+
+# API Versions (space-separated)
+API_VERSIONS := device/v1alpha1
+
+# Helper for tools that need comma-separated Group/Versions
+API_VERSIONS_COMMA := $(subst $(SPACE),$(COMMA),$(API_VERSIONS))
+
+# Helper for tools that need full package paths
+API_PKGS := $(foreach version,$(API_VERSIONS),$(MODULE_NAME)/$(version))
+
+# Common
+BOILERPLATE := hack/boilerplate.go.txt
+
 # Directories
-PROTO_DIR       := proto
-GEN_DIR         := gen/go
+PROTO_DIR := proto
+GEN_DIR   := gen/go
 
 # Shell setup
 SHELL = /usr/bin/env bash -o pipefail
@@ -52,7 +72,7 @@ VERSIONS_FILE := ../.versions.yaml
 
 PROTOC_GEN_GO_VERSION      := $(shell $(YQ) '.protobuf.protoc_gen_go' $(VERSIONS_FILE))
 PROTOC_GEN_GO_GRPC_VERSION := $(shell $(YQ) '.protobuf.protoc_gen_go_grpc' $(VERSIONS_FILE))
-DEEPCOPY_GEN_VERSION       := $(shell $(YQ) '.go_tools.deepcopy_gen' $(VERSIONS_FILE))
+KUBERNETES_CODEGEN_VERSION := $(shell $(YQ) '.go_tools.kubernetes_code_gen' $(VERSIONS_FILE))
 GOVERTER_VERSION           := $(shell $(YQ) '.go_tools.goverter' $(VERSIONS_FILE))
 
 # ==============================================================================
@@ -71,7 +91,7 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: code-gen
-code-gen: install-tools protos-generate deepcopy-gen goverter-gen ## Run all code generation targets.
+code-gen: install-tools protos-generate deepcopy-gen conversion-gen ## Run all code generation targets.
 	@echo "Synchronizing module dependencies..."
 	go mod tidy
 
@@ -87,54 +107,55 @@ test: code-gen ## Run unit tests and generate coverage after code generation.
 
 .PHONY: protos-generate
 protos-generate: $(PROTOC_GEN_GO) $(PROTOC_GEN_GO_GRPC) clean-protos ## Generate Protobuf Go bindings.
-	@echo "Generating Protobuf Go bindings..."
+	@echo "Generating protobuf bindings for $(API_VERSIONS_COMMA)..."
 	@mkdir -p $(GEN_DIR)
-	cd proto && protoc \
-		-I . \
-		-I ../$(THIRD_PARTY_DIR) \
-		--plugin="protoc-gen-go=$(PROTOC_GEN_GO)" \
-		--plugin="protoc-gen-go-grpc=$(PROTOC_GEN_GO_GRPC)" \
-		--go_out=../$(GEN_DIR) \
-		--go_opt=paths=source_relative \
-		--go-grpc_out=../$(GEN_DIR) \
-		--go-grpc_opt=paths=source_relative \
-		device/v1alpha1/*.proto
+	@$(foreach version,$(API_VERSIONS), \
+		cd $(PROTO_DIR) && protoc \
+			-I . \
+			--plugin="protoc-gen-go=$(PROTOC_GEN_GO)" \
+			--plugin="protoc-gen-go-grpc=$(PROTOC_GEN_GO_GRPC)" \
+			--go_out="../$(GEN_DIR)" \
+			--go_opt=paths="source_relative" \
+			--go-grpc_out="../$(GEN_DIR)" \
+			--go-grpc_opt=paths="source_relative" \
+			$(version)/*.proto; \
+	)
 
 .PHONY: deepcopy-gen
-deepcopy-gen: $(DEEPCOPY_GEN) clean-deepcopy ## Generate DeepCopy methods for K8s types.
-	@echo "Generating DeepCopy methods for K8s types..."
+deepcopy-gen: $(DEEPCOPY_GEN) clean-deepcopy ## Generate deepcopy code.
+	@echo "Generating deepcopy code for $(API_VERSIONS_COMMA)..."
 	$(DEEPCOPY_GEN) \
-		--bounding-dirs github.com/nvidia/nvsentinel/api/device/v1alpha1 \
-		--go-header-file="" \
-		--output-file zz_generated.deepcopy.go \
-		github.com/nvidia/nvsentinel/api/device/v1alpha1
+		--bounding-dirs="$(API_PKGS_COMMA)" \
+		--go-header-file="$(BOILERPLATE)" \
+		--output-file="zz_generated.deepcopy.go" \
+		$(API_PKGS)
 
-.PHONY: goverter-gen
-goverter-gen: $(GOVERTER) clean-goverter ## Generate Goverter conversion methods (Proto <-> K8s types).
-	@echo "Generating Goverter conversions (Proto <-> K8s types)..."
-	$(GOVERTER) \
-		gen \
-		./device/v1alpha1
+.PHONY: conversion-gen
+conversion-gen: $(GOVERTER) clean-conversion ## Generate conversion code..
+	@echo "Generating conversion code for $(API_VERSIONS_COMMA)..."
+	@$(foreach version,$(API_VERSIONS), \
+		$(GOVERTER) gen ./$(version); \
+	)
 
 .PHONY: clean
-clean: clean-protos clean-goverter clean-deepcopy ## Remove all generated code.
+clean: clean-protos clean-conversion clean-deepcopy ## Remove all generated code.
 
 .PHONY: purge
 purge: clean clean-bin ## Remove all generated code and downloaded tools.
 
 .PHONY: clean-protos
-clean-protos: ## Remove generated Protobuf Go bindings.
-	@echo "Removing generated Protobuf Go bindings..."
+clean-protos: ## Remove generated protobuf Go bindings.
+	@echo "Removing generated protobuf Go bindings..."
 	rm -rf $(GEN_DIR)
 
 .PHONY: clean-deepcopy
-clean-deepcopy: ## Remove generated DeepCopy methods for K8s types.
-	@echo "Removing generated DeepCopy methods for K8s types..."
+clean-deepcopy: ## Remove generated deepcopy code.
+	@echo "Removing generated deepcopy code..."
 	find . -name "zz_generated.deepcopy.go" -delete
 
-.PHONY: clean-goverter
-clean-goverter: ## Remove generated Goverter conversion methods (Proto <-> K8s types).
-	@echo "Removing generated Goverter conversions (Proto <-> K8s types)..."
+.PHONY: clean-conversion
+clean-conversion: ## Remove generated conversion code.
+	@echo "Removing generated conversion code..."
 	find . -name "zz_generated.conversion.go" -delete
 
 .PHONY: clean-bin
@@ -158,7 +179,7 @@ $(PROTOC_GEN_GO_GRPC):
 	$(call go-install-tool,$(PROTOC_GEN_GO_GRPC),google.golang.org/grpc/cmd/protoc-gen-go-grpc,$(PROTOC_GEN_GO_GRPC_VERSION))
 
 $(DEEPCOPY_GEN):
-	$(call go-install-tool,$(DEEPCOPY_GEN),k8s.io/code-generator/cmd/deepcopy-gen,$(DEEPCOPY_GEN_VERSION))
+	$(call go-install-tool,$(DEEPCOPY_GEN),k8s.io/code-generator/cmd/deepcopy-gen,$(KUBERNETES_CODEGEN_VERSION))
 
 $(GOVERTER):
 	$(call go-install-tool,$(GOVERTER),github.com/jmattheis/goverter/cmd/goverter,$(GOVERTER_VERSION))
