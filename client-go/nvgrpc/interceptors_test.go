@@ -18,15 +18,15 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
-	logr "github.com/go-logr/logr/testing"
+	"github.com/go-logr/logr"
+	logrtesting "github.com/go-logr/logr/testing"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func TestLatencyUnaryInterceptor(t *testing.T) {
+func TestErrorLoggingUnaryInterceptor(t *testing.T) {
 	tests := []struct {
 		name         string
 		method       string
@@ -38,22 +38,19 @@ func TestLatencyUnaryInterceptor(t *testing.T) {
 		{"Returns internal status error on internal error", "/svc/internal_error", true, status.Error(codes.Internal, "fail"), codes.Internal},
 		{"Returns canceled status error when canceled", "/svc/cancel", true, status.Error(codes.Canceled, ""), codes.Canceled},
 		{"Returns deadline exceeded status error on timeout", "/svc/timeout", true, status.Error(codes.DeadlineExceeded, ""), codes.DeadlineExceeded},
-		{"Does not log if level too low", "/svc/skip_log", false, nil, codes.OK},
+		{"Does not log if logger disabled", "/svc/skip_log", false, nil, codes.OK},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := logr.NewTestLogger(t)
+			logger := logr.Discard()
 			if tt.log {
-				logger = logger.V(4)
+				logger = logrtesting.NewTestLogger(t)
 			}
 
-			interceptor := NewLatencyUnaryInterceptor(logger)
+			interceptor := NewErrorLoggingUnaryInterceptor(logger)
 
 			invoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
-				if !tt.log {
-					time.Sleep(1 * time.Millisecond)
-				}
 				return tt.invokerErr
 			}
 
@@ -65,7 +62,7 @@ func TestLatencyUnaryInterceptor(t *testing.T) {
 	}
 }
 
-func TestLatencyStreamInterceptor(t *testing.T) {
+func TestErrorLoggingStreamInterceptor(t *testing.T) {
 	tests := []struct {
 		name        string
 		method      string
@@ -74,23 +71,20 @@ func TestLatencyStreamInterceptor(t *testing.T) {
 	}{
 		{"Returns nil on successful start of stream", "/svc/start_stream", true, nil},
 		{"Returns internal status error for failed stream", "/svc/stream_fail", true, status.Error(codes.Internal, "fail")},
-		{"Does not log if level too low", "/svc/skip_log", false, nil},
+		{"Does not log if logger disabled", "/svc/skip_log", false, nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := logr.NewTestLogger(t)
+			logger := logr.Discard()
 			if tt.log {
-				logger = logger.V(4)
+				logger = logrtesting.NewTestLogger(t)
 			}
 
-			interceptor := NewLatencyStreamInterceptor(logger)
+			interceptor := NewErrorLoggingStreamInterceptor(logger)
 			desc := &grpc.StreamDesc{}
 
 			streamer := func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-				if !tt.log {
-					time.Sleep(1 * time.Millisecond)
-				}
 				return nil, tt.streamerErr
 			}
 

@@ -7,7 +7,9 @@ replace github.com/nvidia/nvsentinel/api => ../api
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/go-logr/stdr v1.2.2
+	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.0.1
 	github.com/nvidia/nvsentinel/api v0.0.0
+	github.com/prometheus/client_golang v1.22.0
 	google.golang.org/grpc v1.77.0
 	k8s.io/apimachinery v0.34.1
 	k8s.io/client-go v0.34.1
@@ -31,6 +33,7 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
@@ -39,7 +42,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_golang v1.22.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect

@@ -54,7 +54,7 @@ type Converter interface {
 
 	// FromProtobufObjectMeta converts a protobuf ObjectMeta into a metav1.ObjectMeta object.
 	//
-	// goverter:ignore Namespace GenerateName UID Generation CreationTimestamp DeletionTimestamp DeletionGracePeriodSeconds Labels Annotations OwnerReferences Finalizers ManagedFields SelfLink
+	// goverter:ignoreMissing
 	FromProtobufObjectMeta(source *pb.ObjectMeta) metav1.ObjectMeta
 
 	// ToProtobufObjectMeta converts a metav1.ObjectMeta into a protobuf Object message.

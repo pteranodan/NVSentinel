@@ -17,6 +17,8 @@
 package v1alpha1
 
 import (
+	"fmt"
+
 	"github.com/go-logr/logr"
 	"github.com/nvidia/nvsentinel/client-go/nvgrpc"
 	"google.golang.org/grpc"
@@ -41,6 +43,10 @@ func (c *DeviceV1alpha1Client) GPUs() GPUInterface {
 // NewForConfig is equivalent to NewForConfigAndClient(c, clientConn),
 // where clientConn was generated with nvgrpc.ClientConnFor(c).
 func NewForConfig(c *nvgrpc.Config) (*DeviceV1alpha1Client, error) {
+	if c == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+
 	config := *c // Shallow copy to avoid mutation
 	conn, err := nvgrpc.ClientConnFor(&config)
 	if err != nil {
@@ -53,6 +59,13 @@ func NewForConfig(c *nvgrpc.Config) (*DeviceV1alpha1Client, error) {
 // NewForConfigAndClient creates a new DeviceV1alpha1Client for the given config and gRPC client connection.
 // Note the grpc client connection provided takes precedence over the configured transport values.
 func NewForConfigAndClient(c *nvgrpc.Config, conn grpc.ClientConnInterface) (*DeviceV1alpha1Client, error) {
+	if c == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+	if conn == nil {
+		return nil, fmt.Errorf("gRPC connection cannot be nil")
+	}
+
 	return &DeviceV1alpha1Client{
 		conn:   conn,
 		logger: c.GetLogger().WithName("device.v1alpha1"),

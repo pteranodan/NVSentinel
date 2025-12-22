@@ -156,8 +156,6 @@ func TestWatcher_Stop(t *testing.T) {
 	source := NewFakeSource()
 
 	w := NewWatcher(source, cancel, logr.Discard())
-	// Allow the receive loop to start
-	time.Sleep(10 * time.Millisecond)
 	w.Stop()
 
 	select {

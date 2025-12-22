@@ -12,7 +12,7 @@ By utilizing a node-local gRPC transport, this SDK allows agents to query device
 - **Kubernetes-Native API**: Provides generated versioned clientsets, informers, and listers.
 - **gRPC Transport**: Optimized for low-latency, node-local communication via Unix domain sockets (UDS).
 - **controller-runtime Integration**: Supports **Informer Injection** to drive standard Reconcilers with node-local gRPC streams.
-- **Observability**: Includes **default latency logging** and full support for gRPC interceptors and structured logging.
+- **Observability**: Includes **Prometheus metrics**, **error logging**, and full support for structured logging.
 
 ## Installation
 

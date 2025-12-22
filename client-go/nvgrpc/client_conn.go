@@ -17,10 +17,23 @@ package nvgrpc
 import (
 	"fmt"
 
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
+
+// clientMetrics represents a collection of metrics to be registered on a
+// Prometheus metrics registry for a gRPC client.
+var clientMetrics = grpcprom.NewClientMetrics(
+	grpcprom.WithClientHandlingTimeHistogram(),
+)
+
+// init registers the client metrics with the default Prometheus registry.
+func init() {
+	prometheus.MustRegister(clientMetrics)
+}
 
 // ClientConnFor creates a new gRPC connection using the provided configuration and options.
 func ClientConnFor(config *Config, opts ...DialOption) (*grpc.ClientConn, error) {
@@ -51,14 +64,16 @@ func ClientConnFor(config *Config, opts ...DialOption) (*grpc.ClientConn, error)
 
 	// Build the unary interceptor chain.
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
-		NewLatencyUnaryInterceptor(logger),
+		clientMetrics.UnaryClientInterceptor(),
+		NewErrorLoggingUnaryInterceptor(logger),
 	}
 	unaryInterceptors = append(unaryInterceptors, dOpts.unaryInterceptors...)
 	grpcOpts = append(grpcOpts, grpc.WithChainUnaryInterceptor(unaryInterceptors...))
 
 	// Build the stream interceptor chain.
 	streamInterceptors := []grpc.StreamClientInterceptor{
-		NewLatencyStreamInterceptor(logger),
+		clientMetrics.StreamClientInterceptor(),
+		NewErrorLoggingStreamInterceptor(logger),
 	}
 	streamInterceptors = append(streamInterceptors, dOpts.streamInterceptors...)
 	grpcOpts = append(grpcOpts, grpc.WithChainStreamInterceptor(streamInterceptors...))

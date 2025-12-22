@@ -16,7 +16,6 @@ package nvgrpc
 
 import (
 	"context"
-	"time"
 
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
@@ -24,14 +23,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// NewLatencyUnaryInterceptor returns an interceptor that logs the latency and status of unary RPCs.
-func NewLatencyUnaryInterceptor(logger logr.Logger) grpc.UnaryClientInterceptor {
+// NewErrorLoggingUnaryInterceptor returns an interceptor that logs the status of unary RPCs.
+func NewErrorLoggingUnaryInterceptor(logger logr.Logger) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{},
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 
-		start := time.Now()
 		err := invoker(ctx, method, req, reply, cc, opts...)
-		duration := time.Since(start)
 
 		if err != nil || logger.V(6).Enabled() {
 			s := status.Convert(err)
@@ -39,7 +36,6 @@ func NewLatencyUnaryInterceptor(logger logr.Logger) grpc.UnaryClientInterceptor 
 
 			kv := []interface{}{
 				"grpc.method", method,
-				"duration", duration,
 				"code", int(code),
 			}
 
@@ -58,14 +54,12 @@ func NewLatencyUnaryInterceptor(logger logr.Logger) grpc.UnaryClientInterceptor 
 	}
 }
 
-// NewLatencyStreamInterceptor returns an interceptor that logs the latency and status of stream establishment.
-func NewLatencyStreamInterceptor(logger logr.Logger) grpc.StreamClientInterceptor {
+// NewErrorLoggingStreamInterceptor returns an interceptor that logs the status of stream establishment.
+func NewErrorLoggingStreamInterceptor(logger logr.Logger) grpc.StreamClientInterceptor {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn,
 		method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 
-		start := time.Now()
 		stream, err := streamer(ctx, desc, cc, method, opts...)
-		duration := time.Since(start)
 
 		if err != nil || logger.V(4).Enabled() {
 			s := status.Convert(err)
@@ -73,7 +67,6 @@ func NewLatencyStreamInterceptor(logger logr.Logger) grpc.StreamClientIntercepto
 
 			kv := []interface{}{
 				"grpc.method", method,
-				"duration", duration,
 				"code", int(code),
 			}
 
