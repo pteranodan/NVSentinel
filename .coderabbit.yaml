@@ -17,8 +17,11 @@ reviews:
   auto_review:
     enabled: true
   path_filters:
-    - "!api/gen/**"               # Ignore generated protobuf bindings
-    - "!api/**/zz_generated.*"    # Ignore generated deepcopy and conversion code
-    - "!client-go/client/**"      # Ignore generated clientset
-    - "!client-go/listers/**"     # Ignore generated listers
-    - "!client-go/informers/**"   # Ignore generated informers
+    - "!api/gen/**"                                         # Ignore generated protobuf bindings
+    - "!api/**/zz_generated.*"                              # Ignore generated deepcopy and conversion code
+    - "!client-go/client/**"                                # Ignore generated clientset
+    - "!client-go/listers/**"                               # Ignore generated listers
+    - "!client-go/informers/**"                             # Ignore generated informers
+    - "!code-generator/cmd/client-gen/types/**"             # Ignore copied, unmodified upstream code
+    - "!code-generator/cmd/client-gen/generators/scheme/**" # Ignore copied, unmodified upsteam code
+    - "!code-generator/cmd/client-gen/generators/util/**"   # Ignore copied, unmodified upsteam code

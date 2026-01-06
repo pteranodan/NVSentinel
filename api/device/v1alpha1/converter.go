@@ -24,7 +24,7 @@ import (
 // Kubernetes Resource Model structs and the Protobuf message structs.
 //
 // goverter:converter
-// goverter:output:file ./zz_generated.conversion.go
+// goverter:output:file ./zz_generated.goverter.go
 // goverter:extend FromProtobufTypeMeta FromProtobufListTypeMeta FromProtobufTimestamp ToProtobufTimestamp
 // goverter:useZeroValueOnPointerInconsistency
 type Converter interface {

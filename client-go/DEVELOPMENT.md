@@ -1,40 +1,41 @@
 # NVIDIA Device API Go Client: Development Guide
-
-This document outlines the workflow for developing and maintaining the `nvidia/client-go` SDK. This library relies heavily on code generation to provide Kubernetes-native interfaces (Clientsets, Listers, Informers).
+This document outlines the workflow for developing and maintaining the `nvidia/client-go` SDK. Because this library provides Kubernetes-native interfaces, it relies heavily on **code generation**. Most of the code in this directory should not be edited manually.
 
 ## Prerequisites
-
-* **Go**: Matches the version in `go.mod`.
+* **Go**: Must match the version specified in `go.mod`.
 * **Make**: Standard build tool.
-* **yq**: Required to parse version configuration.
-  * *macOS*: `brew install yq`
-  * *Linux*: See [yq installation](https://github.com/mikefarah/yq)
+
+## Structure
+- `client/`: [Generated] The Clientset. **Do not edit manually.**
+- `listers/`: [Generated] Type-safe listers. **Do not edit manually.**
+- `informers/`: [Generated] Shared Index Informers. **Do not edit manually.**
+- `nvgrpc/`: [Manual] The gRPC transport layer, interceptors, and connection management logic.
+- `version/`: [Manual] Version injection functionality via `ldflags`.
 
 ## Workflow
 
 ### 1. Code Generation
-If you modify the API definitions (in the `api` module) or the client configuration, you must regenerate the Go code.
+To (re)generate the client, run:
 
 ```bash
-# Downloads codegen tools, generates clients/listers/informers, and applies overlays
+# Downloads codegen tools and generates clients/listers/informers
 make code-gen
 ```
-**Note**: This process runs `hack/apply-overlays.sh` to inject custom gRPC logic into the generated files.
 
 > [!TIP]
-> **Modified the API?**
+> **Did you modify the API?**
 >
-> If you have changed Protocol Buffers or Go types in the `api` module, you must run `make code-gen` **inside the `api` directory first**.
-> This ensures that the low-level bindings (Protobufs, DeepCopy, Conversions) are up-to-date before this client is generated.
+> If you have changed the types in the `../api` module (Proto or Go), you must run `make code-gen` **inside that directory first**.
+> This ensures that the low-level bindings (Protobufs, DeepCopy, Conversions) are up-to-date before this client attempts to generate the high-level interfaces.
 
 ### 2. Building & Testing
 Verify that the generated code compiles and passes unit tests.
 
 ```bash
-# Compile everything (verifies type safety)
+# Compile everything (verifies type safety of generated code)
 make build
 
-# Run unit tests (excludes generated code folders from coverage)
+# Run unit tests (focuses on the transport layer and manual logic)
 make test
 ```
 
@@ -46,11 +47,11 @@ make all
 ```
 
 ## Code Generation Pipeline
-This SDK is automatically generated from the Protocol Buffer definitions and Go types found in the `api` module. We use the standard Kubernetes code generators with a custom post-processing step.
+This SDK is automatically generated from the Protocol Buffer definitions and Go types found in the `../api` module. We use standard Kubernetes code generators, including a customized build of `client-gen` to handle gRPC transport natively.
 
 ```mermaid
 graph TD
-    API["API Definitions<br/>(nvidia/nvsentinel/api)"] -->|Input| CG(client-gen)
+    API["API Definitions<br/>(nvidia/nvsentinel/api)"] -->|Input| CG(client-gen<br/>*Custom Build*)
     API -->|Input| LG(lister-gen)
 
     CG -->|Generates| CLIENT[client/versioned]
@@ -59,47 +60,26 @@ graph TD
     CLIENT & LISTERS -->|Input| IG(informer-gen)
     IG -->|Generates| INFORMERS[informers/]
 
-    CLIENT & LISTERS & INFORMERS -->|Post-Process| OVERLAYS(hack/apply-overlays.sh)
-    OVERLAYS -->|Final Output| SDK[Ready-to-use SDK]
+    CLIENT & LISTERS & INFORMERS -->|Final Output| SDK[Ready-to-use SDK]
 ```
 
 ### Components
-1. `client-gen`: Generates the **Clientset**. This provides access to the API Resources (e.g., `DeviceV1alpha1().GPUs()`) and maps standard Kubernetes verbs (Get, List, Watch) to our gRPC transport.
+1. `client-gen` (**Custom**): Generates the **Clientset**. This provides access to the API Resources (e.g., `DeviceV1alpha1().GPUs()`) and maps standard Kubernetes verbs (Get, List, Watch) to the node-local gRPC transport.
 2. `lister-gen`: Generates **Listers**. These provide a read-only, cached view of resources, allowing for fast lookups without making network calls.
 3. `informer-gen`: Generates **Informers**. These coordinate the Client and Listers to watch for updates and sync the local cache.
-4. **Overlays** (`hack/apply-overlays.sh`): A custom script that patches the generated files. We use this to inject project-specific logic (like gRPC dial options) that the standard generators don't support natively.
 
 ### Modifying Generated Code
-We use an "Overlay" pattern to inject custom logic into the generated clients.
-- **Source**: `hack/overlays/`
-- **Destination**: Root of the repo (e.g., `client/`, `listers/`, `informers/`)
-
-The directory structure inside `hack/overlays/` **must exactly mirror** the structure of the generated code. During the `make code-gen` process, files in `hack/overlays` are copied over the generated files, replacing them (or adding new files) at the corresponding paths.
-
-**Example**: To customize `client/versioned/clientset.go`, you must edit `hack/overlays/client/versioned/clientset.go`.
-
 > [!WARNING]
 > **Do not edit generated files directly.**
 >
 > Files in `client/`, `listers/`, and `informers/` are overwritten every time you run `make code-gen`.
-> Always modify the corresponding file in `hack/overlays/` and regenerate the code to apply your changes.
-
-## Directory Structure
-- `client/`: Generated Clientset. **Do not edit manually.**
-- `listers/`: Generated Listers. **Do not edit manually.**
-- `informers/`: Generated Informers. **Do not edit manually.**
-- `nvgrpc/`: gRPC transport layer and interceptors.
-- `version/`: Functionality for version injection via `ldflags`.
-- `bin/`: Local build tools (downloaded automatically by Make).
+> To change the client behavior, you must modify the generator source code in `../code-generator/cmd/client-gen` or the API definitions in the `../api` module.
 
 
 ## Housekeeping
 If you need to reset your environment:
 
 ```bash
-# Removes generated code (client, listers, informers) and coverage files
+# Removes generated code (client, listers, informers)
 make clean
-
-# Deep clean: removes generated code AND deletes downloaded build tools (bin/)
-make purge
 ```
