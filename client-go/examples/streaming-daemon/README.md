@@ -1,33 +1,24 @@
 # Streaming Daemon: Event-Driven Agent Reference
+This example demonstrates **production-grade usage patterns** for the NVIDIA Device API Go Client, specifically focusing on long-lived, asynchronous operations and telemetry.
 
-This example demonstrates **production-grade usage patterns** for the NVIDIA Device API Go Client, specifically focusing on long-lived, asynchronous operations and telemetry. This reference shows how to build a robust, event-driven agent that reacts to real-time device state changes.
+This reference shows how to build a robust, event-driven agent that reacts to real-time device state changes without polling.
 
 ## Key Concepts Covered
 * **Manual Connection Management**: Constructing a `grpc.ClientConn` with custom dialers for Unix domain sockets (UDS).
 * **Middleware (Interceptors)**: Injecting telemetry (Request IDs) and structured logging into the gRPC transport layer.
 * **Stream Processing**: Handling long-lived `Watch()` streams and implementing event-loop logic.
-* **Context Handling**: Proper management of signal cancellation and stream timeouts.
+* **Context Handling**: Proper management of signal cancellation (SIGTERM) and stream lifecycle.
 
 ## Running
-
 1. Ensure the [Fake Server](../fake-server) is running.
 2. Run the example:
 
 ```bash
 sudo go run main.go
 ```
+**Note:** `sudo` is required because the default socket path is in `/var/run/`. If you started the server with a non-default target, override the socket path with the `NVIDIA_DEVICE_API_TARGET` environment variable to the same URI here.
+
 To stop the application, press `Ctrl+C`
-
-**Note:** `sudo` is required because the default socket path is in `/var/run/`.
-
-### Running without Root
-To run without root privileges, override the socket path to a user-writable location:
-
-```bash
-export NVIDIA_DEVICE_API_TARGET=unix:///tmp/device-api.sock
-go run main.go
-```
-**Important**: This value must match the configuration of the [Fake Server](../fake-server). If the server was started with a non-default target, you must export the same `NVIDIA_DEVICE_API_TARGET` here.
 
 ## Expected Output
 ```text
@@ -38,5 +29,4 @@ go run main.go
 "level"=0 "msg"="gpu status changed" "event"="MODIFIED" "name"="gpu-0" "uuid"="GPU-b56c1d18..." "status"="Ready"
 ...
 "level"=0 "msg"="gpu status changed" "event"="MODIFIED" "name"="gpu-1" "uuid"="GPU-2e6d5c15..." "status"="NotReady"
-"level"=0 "msg"="gpu status changed" "event"="MODIFIED" "name"="gpu-2" "uuid"="GPU-fe2864c1..." "status"="Ready"
 ```
