@@ -20,7 +20,7 @@ client-go/bin/*
 *.test
 
 # Output of the go coverage tool
-*.out
+**/*.out
 
 # Go workspace file
 go.work

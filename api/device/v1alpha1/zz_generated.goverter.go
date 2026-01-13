@@ -58,7 +58,6 @@ func (c *ConverterImpl) FromProtobufObjectMeta(source *v1alpha1.ObjectMeta) v1.O
 	var v1ObjectMeta v1.ObjectMeta
 	if source != nil {
 		v1ObjectMeta.Name = (*source).Name
-		v1ObjectMeta.Namespace = (*source).Namespace
 		v1ObjectMeta.ResourceVersion = (*source).ResourceVersion
 	}
 	return v1ObjectMeta
