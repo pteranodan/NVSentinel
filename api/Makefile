@@ -16,6 +16,8 @@
 # Configuration
 # ==============================================================================
 
+MODULE_NAME = $(shell basename $(shell pwd))
+
 # Shell setup
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
@@ -37,23 +39,28 @@ help: ## Display this help.
 
 .PHONY: code-gen
 code-gen: ## Run all code generation targets.
-	@echo "Generating code..."
+	@echo "Generating code ($(MODULE_NAME))..."
 	./hack/update-codegen.sh
 	@echo "Synchronizing module dependencies..."
 	go mod tidy
 
 .PHONY: build
-build: code-gen ## Compile all Go code after generation to verify type safety.
-	@echo "Compiling..."
+build: ## Compile all Go code after generation to verify type safety.
+	@echo "Compiling ($(MODULE_NAME))..."
 	go build -v ./...
 
 .PHONY: test
-test: code-gen ## Run unit tests and generate coverage after code generation.
-	@echo "Testing..."
+test: ## Run unit tests and generate coverage after code generation.
+	@echo "Testing ($(MODULE_NAME))..."
 	go test -v $$(go list ./... | grep -v /gen/) -coverprofile cover.out
+
+.PHONY: lint
+lint: ## Run golangci-lint.
+	@echo "Linting ($(MODULE_NAME))..."
+	golangci-lint run ./...
 
 .PHONY: clean
 clean: ## Remove all generated code.
-	@echo "Cleaning generated code..."
+	@echo "Cleaning generated code ($(MODULE_NAME))..."
 	rm -rf gen/go
 	find . -name "zz_generated.*.go" -delete

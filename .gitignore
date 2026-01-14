@@ -13,21 +13,17 @@
 *.dll
 *.so
 *.dylib
-api/bin/*
-client-go/bin/*
 
 # Test binary, built with `go test -c`
 *.test
 
 # Output of the go coverage tool
 **/*.out
+code-quality-report.json
 
 # Go workspace file
 go.work
 go.work.sum
-
-# Local tool binaries (managed by api/Makefile)
-api/bin/*
 
 # ==============================================================================
 # IDE & Editor Configurations

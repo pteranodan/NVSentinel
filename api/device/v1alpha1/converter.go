@@ -54,7 +54,8 @@ type Converter interface {
 
 	// FromProtobufObjectMeta converts a protobuf ObjectMeta into a metav1.ObjectMeta object.
 	//
-	// goverter:ignore Namespace GenerateName UID Generation CreationTimestamp DeletionTimestamp DeletionGracePeriodSeconds Labels Annotations OwnerReferences Finalizers ManagedFields SelfLink
+	// goverter:ignore GenerateName UID Generation CreationTimestamp DeletionTimestamp DeletionGracePeriodSeconds
+	// goverter:ignore Labels Annotations OwnerReferences Finalizers ManagedFields SelfLink
 	FromProtobufObjectMeta(source *pb.ObjectMeta) metav1.ObjectMeta
 
 	// ToProtobufObjectMeta converts a metav1.ObjectMeta into a protobuf Object message.
@@ -124,6 +125,7 @@ func FromProtobufTimestamp(source *timestamppb.Timestamp) metav1.Time {
 	if source == nil {
 		return metav1.Time{}
 	}
+
 	return metav1.NewTime(source.AsTime())
 }
 
@@ -132,5 +134,6 @@ func ToProtobufTimestamp(source metav1.Time) *timestamppb.Timestamp {
 	if source.IsZero() {
 		return nil
 	}
+
 	return timestamppb.New(source.Time)
 }

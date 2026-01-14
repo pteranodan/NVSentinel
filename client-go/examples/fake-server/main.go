@@ -21,9 +21,10 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/big"
 	"net"
 	"os"
 	"os/signal"
@@ -68,7 +69,9 @@ func main() {
 		}
 	}
 
-	listener, err := net.Listen("unix", socketPath)
+	lc := net.ListenConfig{}
+
+	listener, err := lc.Listen(context.Background(), "unix", socketPath)
 	if err != nil {
 		log.Fatalf("failed to listen on %s: %v", socketPath, err)
 	}
@@ -81,6 +84,7 @@ func main() {
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
 	go func() {
 		<-c
 		fmt.Println("\nStopping server...")
@@ -90,6 +94,7 @@ func main() {
 	}()
 
 	fmt.Printf("Fake Device API listening on %s\n", socketPath)
+
 	if err := srv.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
@@ -130,6 +135,7 @@ func newFakeServer() *fakeServer {
 			},
 		}
 	}
+
 	return s
 }
 
@@ -143,7 +149,17 @@ func (s *fakeServer) simulateChanges() {
 		s.mu.Lock()
 
 		// Pick a random GPU to update
-		idx := rand.Intn(len(s.gpus))
+		idx := 0
+
+		if len(s.gpus) > 0 {
+			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(s.gpus))))
+			if err != nil {
+				idx = 0
+			} else {
+				idx = int(n.Int64())
+			}
+		}
+
 		gpu := &s.gpus[idx]
 
 		// Increment ResourceVersion for K8s watch semantics
@@ -153,6 +169,7 @@ func (s *fakeServer) simulateChanges() {
 
 		// Toggle the Ready condition
 		isReady := gpu.Status.Conditions[0].Status == metav1.ConditionTrue
+
 		var newStatus metav1.ConditionStatus
 		if isReady {
 			newStatus = metav1.ConditionFalse
@@ -164,6 +181,7 @@ func (s *fakeServer) simulateChanges() {
 		gpu.Status.Conditions[0].LastTransitionTime = metav1.Now()
 
 		updatedGPU := *gpu.DeepCopy()
+
 		s.mu.Unlock()
 
 		s.broadcast(updatedGPU)
@@ -173,6 +191,7 @@ func (s *fakeServer) simulateChanges() {
 func (s *fakeServer) broadcast(gpu devicev1alpha1.GPU) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	for _, ch := range s.listeners {
 		select {
 		case ch <- gpu:
@@ -213,20 +232,24 @@ func (s *fakeServer) ListGpus(ctx context.Context, req *pb.ListGpusRequest) (*pb
 	return &pb.ListGpusResponse{GpuList: gpuList}, nil
 }
 
+//nolint:cyclop // This is an example; complexity is acceptable for clarity.
 func (s *fakeServer) WatchGpus(req *pb.WatchGpusRequest, stream pb.GpuService_WatchGpusServer) error {
 	var requestRV int
-	if req.ResourceVersion != "" {
-		requestRV, _ = strconv.Atoi(req.ResourceVersion)
+	if req.Opts.ResourceVersion != "" {
+		requestRV, _ = strconv.Atoi(req.Opts.ResourceVersion)
 	}
 
 	if requestRV == 0 {
 		// Send Initial State (ADDED events)
 		var initial []devicev1alpha1.GPU
+
 		s.mu.RLock()
+
 		initial = make([]devicev1alpha1.GPU, len(s.gpus))
 		for i, g := range s.gpus {
 			initial[i] = *g.DeepCopy()
 		}
+
 		s.mu.RUnlock()
 
 		for _, gpu := range initial {
@@ -278,8 +301,14 @@ func (s *fakeServer) WatchGpus(req *pb.WatchGpusRequest, stream pb.GpuService_Wa
 
 func generateGPUUUID() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+
+	_, err := rand.Read(b)
+	if err != nil {
+		return "GPU-static-uuid-on-error"
+	}
+
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
+
 	return fmt.Sprintf("GPU-%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }

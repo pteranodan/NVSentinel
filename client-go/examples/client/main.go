@@ -45,6 +45,7 @@ func main() {
 
 	// Initialize the versioned clientset using the gRPC transport.
 	config := &nvgrpc.Config{Target: target}
+
 	clientset, err := versioned.NewForConfig(config)
 	if err != nil {
 		logger.Error(err, "unable to create clientset")
@@ -57,16 +58,19 @@ func main() {
 		logger.Error(err, "failed to list GPUs")
 		os.Exit(1)
 	}
+
 	logger.Info("discovered GPUs", "count", len(gpus.Items), "target", target)
 
 	// Fetch a specific GPU by name.
 	if len(gpus.Items) > 0 {
 		firstName := gpus.Items[0].Name
+
 		gpu, err := clientset.DeviceV1alpha1().GPUs().Get(context.Background(), firstName, metav1.GetOptions{})
 		if err != nil {
 			logger.Error(err, "failed to fetch GPU", "name", firstName)
 			os.Exit(1)
 		}
+
 		logger.Info("details", "name", gpu.Name, "uuid", gpu.Spec.UUID)
 	}
 
@@ -74,6 +78,7 @@ func main() {
 	for _, gpu := range gpus.Items {
 		// Use standard K8s meta helpers to check status conditions safely.
 		isReady := meta.IsStatusConditionTrue(gpu.Status.Conditions, "Ready")
+
 		status := "NotReady"
 		if isReady {
 			status = "Ready"

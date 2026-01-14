@@ -30,9 +30,11 @@ func ClientConnFor(config *Config, opts ...DialOption) (*grpc.ClientConn, error)
 	for _, opt := range opts {
 		opt(dOpts)
 	}
+
 	cfg.logger = dOpts.logger
 
 	cfg.Default()
+
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}

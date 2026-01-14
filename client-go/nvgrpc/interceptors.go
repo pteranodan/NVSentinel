@@ -28,33 +28,34 @@ import (
 func NewLatencyUnaryInterceptor(logger logr.Logger) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{},
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-
 		start := time.Now()
 		err := invoker(ctx, method, req, reply, cc, opts...)
 		duration := time.Since(start)
 
-		if err != nil || logger.V(6).Enabled() {
-			s := status.Convert(err)
-			code := s.Code()
-
-			kv := []interface{}{
-				"grpc.method", method,
-				"duration", duration,
-				"code", int(code),
-			}
-
-			if err != nil {
-				if code == codes.Canceled || code == codes.DeadlineExceeded {
-					logger.V(4).Info("RPC finished with context error", kv...)
-				} else {
-					logger.Error(err, "RPC failed", kv...)
-				}
-			} else {
-				logger.V(6).Info("RPC succeeded", kv...)
-			}
+		s := status.Convert(err)
+		code := s.Code()
+		kv := []interface{}{
+			"grpc.method", method,
+			"duration", duration,
+			"code", int(code),
 		}
 
-		return err
+		if err != nil {
+			if code == codes.Canceled || code == codes.DeadlineExceeded {
+				logger.V(4).Info("RPC finished with context error", kv...)
+				return err
+			}
+
+			logger.Error(err, "RPC failed", kv...)
+
+			return err
+		}
+
+		if logger.V(6).Enabled() {
+			logger.V(6).Info("RPC succeeded", kv...)
+		}
+
+		return nil
 	}
 }
 
@@ -62,31 +63,33 @@ func NewLatencyUnaryInterceptor(logger logr.Logger) grpc.UnaryClientInterceptor 
 func NewLatencyStreamInterceptor(logger logr.Logger) grpc.StreamClientInterceptor {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn,
 		method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-
 		start := time.Now()
 		stream, err := streamer(ctx, desc, cc, method, opts...)
 		duration := time.Since(start)
 
-		if err != nil || logger.V(4).Enabled() {
-			s := status.Convert(err)
-			code := s.Code()
-
-			kv := []interface{}{
-				"grpc.method", method,
-				"duration", duration,
-				"code", int(code),
-			}
-
-			if err != nil {
-				if code == codes.Canceled || code == codes.DeadlineExceeded {
-					logger.V(4).Info("Stream establishment canceled", kv...)
-				} else {
-					logger.Error(err, "Stream establishment failed", kv...)
-				}
-			} else {
-				logger.V(4).Info("Stream started", kv...)
-			}
+		s := status.Convert(err)
+		code := s.Code()
+		kv := []interface{}{
+			"grpc.method", method,
+			"duration", duration,
+			"code", int(code),
 		}
-		return stream, err
+
+		if err != nil {
+			if code == codes.Canceled || code == codes.DeadlineExceeded {
+				logger.V(4).Info("Stream establishment canceled", kv...)
+				return stream, err
+			}
+
+			logger.Error(err, "Stream establishment failed", kv...)
+
+			return stream, err
+		}
+
+		if logger.V(4).Enabled() {
+			logger.V(4).Info("Stream started", kv...)
+		}
+
+		return stream, nil
 	}
 }

@@ -39,6 +39,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&GPU{},
 		&GPUList{},
 	)
+
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
+
 	return nil
 }

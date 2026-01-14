@@ -56,6 +56,7 @@ func main() {
 
 	// Initialize the versioned Clientset using the gRPC transport.
 	config := &nvgrpc.Config{Target: target}
+
 	clientset, err := versioned.NewForConfig(config)
 	if err != nil {
 		setupLog.Error(err, "unable to create clientset")
@@ -77,12 +78,18 @@ func main() {
 		MapperProvider: func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
 			mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{devicev1alpha1.SchemeGroupVersion})
 			mapper.Add(devicev1alpha1.SchemeGroupVersion.WithKind("GPU"), meta.RESTScopeRoot)
+
 			return mapper, nil
 		},
 		Cache: cache.Options{
 			// NewInformer allows injecting a specific informer for a GroupVersionKind.
 			// This bypasses the default API server ListerWatcher for GPU resources.
-			NewInformer: func(lw toolscache.ListerWatcher, obj runtime.Object, resync time.Duration, indexers toolscache.Indexers) toolscache.SharedIndexInformer {
+			NewInformer: func(
+				lw toolscache.ListerWatcher,
+				obj runtime.Object,
+				resync time.Duration,
+				indexers toolscache.Indexers,
+			) toolscache.SharedIndexInformer {
 				if _, ok := obj.(*devicev1alpha1.GPU); ok {
 					// Merge the indexers required by controller-runtime with those
 					// already present in the gRPC informer. Conflicting keys (e.g., "namespace")
@@ -97,6 +104,7 @@ func main() {
 							}
 						}
 					}
+
 					return gpuInformer
 				}
 				// Fallback: For all other types, return a standard informer. This allows the
@@ -121,6 +129,7 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	setupLog.Info("starting manager")
+
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
@@ -142,6 +151,7 @@ func (r *GPUReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	log.Info("Reconciled GPU", "name", gpu.Name, "uuid", gpu.Spec.UUID)
+
 	return ctrl.Result{}, nil
 }
 

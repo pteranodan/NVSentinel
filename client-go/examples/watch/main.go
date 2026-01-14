@@ -39,6 +39,7 @@ import (
 	"github.com/nvidia/nvsentinel/client-go/nvgrpc"
 )
 
+//nolint:cyclop,gocritic // This is an example; complexity and exitAfterDefer is acceptable for clarity.
 func main() {
 	// Initialize a standard logger for transport-level visibility.
 	logger := stdr.New(log.New(os.Stdout, "", log.LstdFlags))
@@ -54,13 +55,28 @@ func main() {
 
 	// tracingInterceptor injects metadata (x-request-id) into outgoing requests.
 	// This enables request tracking across the gRPC boundary.
-	tracingInterceptor := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	tracingInterceptor := func(
+		ctx context.Context,
+		method string,
+		req,
+		reply any,
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
 		ctx = metadata.AppendToOutgoingContext(ctx, "x-request-id", "nv-trace-123")
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 
 	// watchMonitorInterceptor logs the start of long-lived Watch streams.
-	watchMonitorInterceptor := func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	watchMonitorInterceptor := func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		streamer grpc.Streamer,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
 		logger.Info("starting long-lived watch stream", "method", method)
 		return streamer(ctx, desc, cc, method, opts...)
 	}
@@ -74,6 +90,7 @@ func main() {
 
 	// Initialize the underlying gRPC connection manually.
 	config := &nvgrpc.Config{Target: target}
+
 	conn, err := nvgrpc.ClientConnFor(config, opts...)
 	if err != nil {
 		logger.Error(err, "unable to connect to gRPC target")
@@ -99,6 +116,7 @@ func main() {
 		logger.Error(err, "failed to list GPUs")
 		os.Exit(1)
 	}
+
 	logger.Info("retrieved GPU list", "count", len(list.Items))
 
 	// Watch GPUs. This triggers the Stream interceptor.
@@ -108,48 +126,51 @@ func main() {
 	if err != nil {
 		logger.Error(err, "failed to establish watch stream")
 		os.Exit(1)
-	} else {
-		defer watcher.Stop()
-		logger.Info("watch stream established, waiting for events...")
+	}
 
-		for {
-			select {
-			case event, ok := <-watcher.ResultChan():
-				if !ok {
-					logger.Info("watch channel closed by server")
-					return
-				}
+	defer watcher.Stop()
 
-				if event.Type == watch.Error {
-					if status, ok := event.Object.(*metav1.Status); ok {
-						logger.Info("received watch error from server", "reason", status.Reason, "message", status.Message)
-					}
-					return
-				}
+	logger.Info("watch stream established, waiting for events...")
 
-				gpu, ok := event.Object.(*devicev1alpha1.GPU)
-				if !ok {
-					logger.Info("received unknown object type", "type", fmt.Sprintf("%T", event.Object))
-					continue
-				}
-
-				isReady := meta.IsStatusConditionTrue(gpu.Status.Conditions, "Ready")
-				status := "NotReady"
-				if isReady {
-					status = "Ready"
-				}
-
-				logger.Info("gpu status changed",
-					"event", event.Type,
-					"name", gpu.Name,
-					"uuid", gpu.Spec.UUID,
-					"status", status,
-				)
-
-			case <-ctx.Done():
-				logger.Info("received shutdown signal, stopping watch")
+	for {
+		select {
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				logger.Info("watch channel closed by server")
 				return
 			}
+
+			if event.Type == watch.Error {
+				if status, ok := event.Object.(*metav1.Status); ok {
+					logger.Info("received watch error from server", "reason", status.Reason, "message", status.Message)
+				}
+
+				return
+			}
+
+			gpu, ok := event.Object.(*devicev1alpha1.GPU)
+			if !ok {
+				logger.Info("received unknown object type", "type", fmt.Sprintf("%T", event.Object))
+				continue
+			}
+
+			isReady := meta.IsStatusConditionTrue(gpu.Status.Conditions, "Ready")
+			status := "NotReady"
+
+			if isReady {
+				status = "Ready"
+			}
+
+			logger.Info("gpu status changed",
+				"event", event.Type,
+				"name", gpu.Name,
+				"uuid", gpu.Spec.UUID,
+				"status", status,
+			)
+
+		case <-ctx.Done():
+			logger.Info("received shutdown signal, stopping watch")
+			return
 		}
 	}
 }

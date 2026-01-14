@@ -16,6 +16,8 @@
 # Configuration
 # ==============================================================================
 
+MODULE_NAME = $(shell basename $(shell pwd))
+
 # Versioning
 GIT_VERSION     ?= $(shell git describe --tags --always --dirty)
 VERSION_PACKAGE := github.com/nvidia/nvsentinel/client-go/version
@@ -46,22 +48,27 @@ help: ## Display this help.
 
 .PHONY: code-gen
 code-gen: ## Run code generation (Client, Listers, Informers).
-	@echo "Generating code..."
+	@echo "Generating code ($(MODULE_NAME))..."
 	./hack/update-codegen.sh
 	@echo "Synchronizing module dependencies..."
 	go mod tidy
 
 .PHONY: build
-build: code-gen ## Compile all Go code after generation to verify type safety.
-	@echo "Compiling..."
+build: ## Compile all Go code after generation to verify type safety.
+	@echo "Compiling ($(MODULE_NAME))..."
 	go build -v $(LDFLAGS) $$(go list ./... | grep -vE '/hack/overlays/|/examples/|/tests/')
 
 .PHONY: test
-test: code-gen ## Run unit tests and generate coverage.
-	@echo "Testing..."
+test: ## Run unit tests and generate coverage.
+	@echo "Testing ($(MODULE_NAME))..."
 	go test -v $$(go list ./... | grep -vE '/hack/overlays/|/client/|/listers/|informers/|/fake|/scheme|/typed/|/examples/') -coverprofile cover.out
+
+.PHONY: lint
+lint: ## Run golangci-lint.
+	@echo "Linting ($(MODULE_NAME))..."
+	golangci-lint run ./...
 
 .PHONY: clean
 clean: ## Remove all generated code.
-	@echo "Cleaning generated code..."
+	@echo "Cleaning generated code ($(MODULE_NAME))..."
 	rm -rf client listers informers

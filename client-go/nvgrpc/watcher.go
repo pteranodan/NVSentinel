@@ -60,6 +60,7 @@ func NewWatcher(
 	}
 
 	go w.receive()
+
 	return w
 }
 
@@ -68,9 +69,11 @@ func (w *Watcher) Stop() {
 	w.stopOnce.Do(func() {
 		w.logger.V(4).Info("Stopping watcher")
 		w.cancel()
+
 		if err := w.source.Close(); err != nil {
 			w.logger.V(4).Info("Error closing source during stop", "err", err)
 		}
+
 		close(w.done)
 	})
 }
@@ -81,6 +84,8 @@ func (w *Watcher) ResultChan() <-chan watch.Event {
 }
 
 // receive reads events from the source and sends them to result channel.
+//
+// nolint:cyclop // Complexity is necessary to handle various gRPC stream states and event types.
 func (w *Watcher) receive() {
 	defer func() {
 		w.logger.V(4).Info("Watcher receive loop exiting")
@@ -90,19 +95,22 @@ func (w *Watcher) receive() {
 
 	for {
 		w.logger.V(6).Info("Waiting for next event from source")
-		typeStr, obj, err := w.source.Next()
 
+		typeStr, obj, err := w.source.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) || status.Code(err) == codes.Canceled {
 				w.logger.V(3).Info("Watch stream closed normally")
 				return
 			}
+
 			w.logger.Error(err, "Watch stream encountered unexpected error")
 			w.sendError(err)
+
 			return
 		}
 
 		var eventType watch.EventType
+
 		switch typeStr {
 		case "ADDED":
 			eventType = watch.Added
@@ -112,7 +120,9 @@ func (w *Watcher) receive() {
 			eventType = watch.Deleted
 		case "ERROR":
 			w.logger.V(4).Info("Received explicit ERROR event from server")
+
 			w.result <- watch.Event{Type: watch.Error, Object: obj}
+
 			return
 		default:
 			w.logger.V(2).Info("Skipping unknown event type from server", "rawType", typeStr)
@@ -137,13 +147,16 @@ func (w *Watcher) receive() {
 
 func (w *Watcher) sendError(err error) {
 	st := status.Convert(err)
+
+	code := st.Code()
 	statusErr := &metav1.Status{
 		Status:  metav1.StatusFailure,
 		Message: st.Message(),
-		Code:    int32(st.Code()),
+		Code:    int32(code), // #nosec G115
 	}
 
-	switch st.Code() {
+	//nolint:exhaustive // Only specific gRPC codes require special Kubernetes status mapping.
+	switch code {
 	case codes.OutOfRange, codes.ResourceExhausted, codes.InvalidArgument:
 		// CRITICAL for Informers: This tells the Reflector to perform a new List operation.
 		statusErr.Reason = metav1.StatusReasonExpired
@@ -154,6 +167,8 @@ func (w *Watcher) sendError(err error) {
 	case codes.NotFound:
 		statusErr.Reason = metav1.StatusReasonNotFound
 		statusErr.Code = 404
+	default:
+		w.logger.V(5).Info("Using default status mapping for gRPC code", "code", code)
 	}
 
 	w.logger.V(4).Info("Sending error event to informer",

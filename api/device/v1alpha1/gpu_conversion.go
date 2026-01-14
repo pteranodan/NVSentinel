@@ -28,6 +28,7 @@ func FromProto(in *pb.Gpu) *GPU {
 	}
 
 	val := converter.FromProtobuf(in)
+
 	return &val
 }
 
@@ -36,6 +37,7 @@ func ToProto(in *GPU) *pb.Gpu {
 	if in == nil {
 		return nil
 	}
+
 	return converter.ToProtobuf(*in)
 }
 
@@ -44,6 +46,7 @@ func FromProtoList(in *pb.GpuList) *GPUList {
 	if in == nil {
 		return nil
 	}
+
 	return converter.FromProtobufList(in)
 }
 
@@ -52,5 +55,6 @@ func ToProtoList(in *GPUList) *pb.GpuList {
 	if in == nil {
 		return nil
 	}
+
 	return converter.ToProtobufList(in)
 }

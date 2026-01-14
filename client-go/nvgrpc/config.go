@@ -53,6 +53,7 @@ func (c *Config) Default() {
 	if c.Target == "" {
 		c.Target = os.Getenv(NvidiaDeviceAPITargetEnvVar)
 	}
+
 	if c.Target == "" {
 		c.Target = DefaultNvidiaDeviceAPISocket
 	}
