@@ -266,7 +266,7 @@ func parseClientExtensions(tags map[string][]string) ([]extension, error) {
 			ext := extension{}
 			parts := strings.Split(value, ",")
 			if len(parts) == 0 {
-				return nil, fmt.Errorf("invalid of empty extension verb name: %q", value)
+				return nil, fmt.Errorf("invalid or empty extension verb name: %q", value)
 			}
 			// The first part represents the name of the extension
 			ext.VerbName = parts[0]

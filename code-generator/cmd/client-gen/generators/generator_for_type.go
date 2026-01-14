@@ -301,7 +301,7 @@ func (c *$.type|allLowercasePlural$) List(ctx $.context|raw$, opts $.ListOptions
 
 	list := $.FromProtoList|raw$(resp.Get$.ProtoType$List())
 	c.logger.V(5).Info("Listed $.type|public$s",
-	    "namespace", c.getNamespace(),
+		"namespace", c.getNamespace(),
 		"count", len(list.Items),
 		"resource-version", list.GetResourceVersion(),
 	)
@@ -326,7 +326,7 @@ func (c *$.type|allLowercasePlural$) Get(ctx $.context|raw$, name string, opts $
 	obj := $.FromProto|raw$(resp.Get$.ProtoType$())
 	c.logger.V(6).Info("Fetched $.type|public$",
 		"name", name,
-	    "namespace", c.getNamespace(),
+		"namespace", c.getNamespace(),
 		"resource-version", obj.GetResourceVersion(),
 	)
 
