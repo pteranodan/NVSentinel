@@ -87,3 +87,32 @@ func (c *fakeGPUs) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interf
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchActionWithOptions(devicev1alpha1.SchemeGroupVersion.WithResource("gpus"), opts))
 }
+
+// Create takes the representation of a gPU and creates it.  Returns the server's representation of the gPU, and an error, if there is any.
+func (c *fakeGPUs) Create(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.CreateOptions) (result *devicev1alpha1.GPU, err error) {
+	emptyResult := &devicev1alpha1.GPU{}
+	obj, err := c.Fake.
+		Invokes(testing.NewRootCreateActionWithOptions(c.Resource(), gPU, opts), emptyResult)
+	if obj == nil {
+		return emptyResult, err
+	}
+	return obj.(*devicev1alpha1.GPU), err
+}
+
+// Update takes the representation of a gPU and updates it. Returns the server's representation of the gPU, and an error, if there is any.
+func (c *fakeGPUs) Update(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.UpdateOptions) (result *devicev1alpha1.GPU, err error) {
+	emptyResult := &devicev1alpha1.GPU{}
+	obj, err := c.Fake.
+		Invokes(testing.NewRootUpdateActionWithOptions(c.Resource(), gPU, opts), emptyResult)
+	if obj == nil {
+		return emptyResult, err
+	}
+	return obj.(*devicev1alpha1.GPU), err
+}
+
+// Delete takes name of the gPU and deletes it. Returns an error if one occurs.
+func (c *fakeGPUs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+	_, err := c.Fake.
+		Invokes(testing.NewRootDeleteActionWithOptions(c.Resource(), name, opts), &devicev1alpha1.GPU{})
+	return err
+}

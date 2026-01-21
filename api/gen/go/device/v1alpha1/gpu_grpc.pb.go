@@ -25,6 +25,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -36,6 +37,9 @@ const (
 	GpuService_GetGpu_FullMethodName    = "/nvidia.nvsentinel.v1alpha1.GpuService/GetGpu"
 	GpuService_ListGpus_FullMethodName  = "/nvidia.nvsentinel.v1alpha1.GpuService/ListGpus"
 	GpuService_WatchGpus_FullMethodName = "/nvidia.nvsentinel.v1alpha1.GpuService/WatchGpus"
+	GpuService_CreateGpu_FullMethodName = "/nvidia.nvsentinel.v1alpha1.GpuService/CreateGpu"
+	GpuService_UpdateGpu_FullMethodName = "/nvidia.nvsentinel.v1alpha1.GpuService/UpdateGpu"
+	GpuService_DeleteGpu_FullMethodName = "/nvidia.nvsentinel.v1alpha1.GpuService/DeleteGpu"
 )
 
 // GpuServiceClient is the client API for GpuService service.
@@ -50,6 +54,12 @@ type GpuServiceClient interface {
 	ListGpus(ctx context.Context, in *ListGpusRequest, opts ...grpc.CallOption) (*ListGpusResponse, error)
 	// WatchGpus streams lifecycle events for GPU resources.
 	WatchGpus(ctx context.Context, in *WatchGpusRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchGpusResponse], error)
+	// CreateGpu creates a single GPU resource.
+	CreateGpu(ctx context.Context, in *CreateGpuRequest, opts ...grpc.CallOption) (*Gpu, error)
+	// UpdateGpu updates a single GPU resource.
+	UpdateGpu(ctx context.Context, in *UpdateGpuRequest, opts ...grpc.CallOption) (*Gpu, error)
+	// DeleteGpu deletes a single GPU resource.
+	DeleteGpu(ctx context.Context, in *DeleteGpuRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type gpuServiceClient struct {
@@ -99,6 +109,36 @@ func (c *gpuServiceClient) WatchGpus(ctx context.Context, in *WatchGpusRequest, 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GpuService_WatchGpusClient = grpc.ServerStreamingClient[WatchGpusResponse]
 
+func (c *gpuServiceClient) CreateGpu(ctx context.Context, in *CreateGpuRequest, opts ...grpc.CallOption) (*Gpu, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Gpu)
+	err := c.cc.Invoke(ctx, GpuService_CreateGpu_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gpuServiceClient) UpdateGpu(ctx context.Context, in *UpdateGpuRequest, opts ...grpc.CallOption) (*Gpu, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Gpu)
+	err := c.cc.Invoke(ctx, GpuService_UpdateGpu_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gpuServiceClient) DeleteGpu(ctx context.Context, in *DeleteGpuRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, GpuService_DeleteGpu_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GpuServiceServer is the server API for GpuService service.
 // All implementations must embed UnimplementedGpuServiceServer
 // for forward compatibility.
@@ -111,6 +151,12 @@ type GpuServiceServer interface {
 	ListGpus(context.Context, *ListGpusRequest) (*ListGpusResponse, error)
 	// WatchGpus streams lifecycle events for GPU resources.
 	WatchGpus(*WatchGpusRequest, grpc.ServerStreamingServer[WatchGpusResponse]) error
+	// CreateGpu creates a single GPU resource.
+	CreateGpu(context.Context, *CreateGpuRequest) (*Gpu, error)
+	// UpdateGpu updates a single GPU resource.
+	UpdateGpu(context.Context, *UpdateGpuRequest) (*Gpu, error)
+	// DeleteGpu deletes a single GPU resource.
+	DeleteGpu(context.Context, *DeleteGpuRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedGpuServiceServer()
 }
 
@@ -129,6 +175,15 @@ func (UnimplementedGpuServiceServer) ListGpus(context.Context, *ListGpusRequest)
 }
 func (UnimplementedGpuServiceServer) WatchGpus(*WatchGpusRequest, grpc.ServerStreamingServer[WatchGpusResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method WatchGpus not implemented")
+}
+func (UnimplementedGpuServiceServer) CreateGpu(context.Context, *CreateGpuRequest) (*Gpu, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateGpu not implemented")
+}
+func (UnimplementedGpuServiceServer) UpdateGpu(context.Context, *UpdateGpuRequest) (*Gpu, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateGpu not implemented")
+}
+func (UnimplementedGpuServiceServer) DeleteGpu(context.Context, *DeleteGpuRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteGpu not implemented")
 }
 func (UnimplementedGpuServiceServer) mustEmbedUnimplementedGpuServiceServer() {}
 func (UnimplementedGpuServiceServer) testEmbeddedByValue()                    {}
@@ -198,6 +253,60 @@ func _GpuService_WatchGpus_Handler(srv interface{}, stream grpc.ServerStream) er
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GpuService_WatchGpusServer = grpc.ServerStreamingServer[WatchGpusResponse]
 
+func _GpuService_CreateGpu_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateGpuRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GpuServiceServer).CreateGpu(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GpuService_CreateGpu_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GpuServiceServer).CreateGpu(ctx, req.(*CreateGpuRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GpuService_UpdateGpu_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateGpuRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GpuServiceServer).UpdateGpu(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GpuService_UpdateGpu_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GpuServiceServer).UpdateGpu(ctx, req.(*UpdateGpuRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GpuService_DeleteGpu_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteGpuRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GpuServiceServer).DeleteGpu(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GpuService_DeleteGpu_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GpuServiceServer).DeleteGpu(ctx, req.(*DeleteGpuRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GpuService_ServiceDesc is the grpc.ServiceDesc for GpuService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -212,6 +321,18 @@ var GpuService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListGpus",
 			Handler:    _GpuService_ListGpus_Handler,
+		},
+		{
+			MethodName: "CreateGpu",
+			Handler:    _GpuService_CreateGpu_Handler,
+		},
+		{
+			MethodName: "UpdateGpu",
+			Handler:    _GpuService_UpdateGpu_Handler,
+		},
+		{
+			MethodName: "DeleteGpu",
+			Handler:    _GpuService_DeleteGpu_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

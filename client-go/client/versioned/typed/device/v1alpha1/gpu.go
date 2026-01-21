@@ -36,6 +36,9 @@ type GPUsGetter interface {
 
 // GPUInterface has methods to work with GPU resources.
 type GPUInterface interface {
+	Create(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.CreateOptions) (*devicev1alpha1.GPU, error)
+	Update(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error)
+	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	Get(ctx context.Context, name string, opts v1.GetOptions) (*devicev1alpha1.GPU, error)
 	List(ctx context.Context, opts v1.ListOptions) (*devicev1alpha1.GPUList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
@@ -65,10 +68,10 @@ func (c *gpus) getNamespace() string {
 
 func (c *gpus) Get(ctx context.Context, name string, opts v1.GetOptions) (*devicev1alpha1.GPU, error) {
 	resp, err := c.client.GetGpu(ctx, &pb.GetGpuRequest{
-		Name: name,
+		Name:      name,
+		Namespace: c.getNamespace(),
 		Opts: &pb.GetOptions{
 			ResourceVersion: opts.ResourceVersion,
-			Namespace:       c.getNamespace(),
 		},
 	})
 	if err != nil {
@@ -87,9 +90,9 @@ func (c *gpus) Get(ctx context.Context, name string, opts v1.GetOptions) (*devic
 
 func (c *gpus) List(ctx context.Context, opts v1.ListOptions) (*devicev1alpha1.GPUList, error) {
 	resp, err := c.client.ListGpus(ctx, &pb.ListGpusRequest{
+		Namespace: c.getNamespace(),
 		Opts: &pb.ListOptions{
 			ResourceVersion: opts.ResourceVersion,
-			Namespace:       c.getNamespace(),
 		},
 	})
 	if err != nil {
@@ -115,9 +118,9 @@ func (c *gpus) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface,
 
 	ctx, cancel := context.WithCancel(ctx)
 	stream, err := c.client.WatchGpus(ctx, &pb.WatchGpusRequest{
+		Namespace: c.getNamespace(),
 		Opts: &pb.ListOptions{
 			ResourceVersion: opts.ResourceVersion,
-			Namespace:       c.getNamespace(),
 		},
 	})
 	if err != nil {
@@ -146,4 +149,63 @@ func (a *gpusStreamAdapter) Next() (string, runtime.Object, error) {
 
 func (a *gpusStreamAdapter) Close() error {
 	return a.stream.CloseSend()
+}
+
+// TODO: Implement CreateOptions support.
+func (c *gpus) Create(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.CreateOptions) (*devicev1alpha1.GPU, error) {
+	resp, err := c.client.CreateGpu(ctx, &pb.CreateGpuRequest{
+		Gpu:  devicev1alpha1.ToProto(gpu),
+		Opts: &pb.CreateOptions{},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	obj := devicev1alpha1.FromProto(resp)
+	c.logger.V(2).Info("Created GPU",
+		"name", obj.GetName(),
+		"namespace", c.getNamespace(),
+		"resource-version", obj.GetResourceVersion(),
+	)
+
+	return obj, nil
+}
+
+// TODO: Implement UpdateOptions support.
+func (c *gpus) Update(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error) {
+	resp, err := c.client.UpdateGpu(ctx, &pb.UpdateGpuRequest{
+		Gpu:  devicev1alpha1.ToProto(gpu),
+		Opts: &pb.UpdateOptions{},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	obj := devicev1alpha1.FromProto(resp)
+	c.logger.V(2).Info("Updated GPU",
+		"name", obj.GetName(),
+		"namespace", c.getNamespace(),
+		"resource-version", obj.GetResourceVersion(),
+	)
+
+	return obj, nil
+}
+
+// TODO: Implement DeleteOptions support.
+func (c *gpus) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+	_, err := c.client.DeleteGpu(ctx, &pb.DeleteGpuRequest{
+		Name:      name,
+		Namespace: c.getNamespace(),
+		Opts:      &pb.DeleteOptions{},
+	})
+	if err != nil {
+		return err
+	}
+
+	c.logger.V(2).Info("Deleted GPU",
+		"name", name,
+		"namespace", c.getNamespace(),
+	)
+
+	return nil
 }
