@@ -3,7 +3,7 @@ package options
 import (
 	"context"
 
-	cp "github.com/nvidia/nvsentinel/controlplane/apiserver/options"
+	cp "github.com/nvidia/nvsentinel/pkg/controlplane/apiserver/options"
 	cliflag "k8s.io/component-base/cli/flag"
 )
 
@@ -27,10 +27,10 @@ func NewServerRunOptions() *ServerRunOptions {
 
 func (s *ServerRunOptions) Flags() cliflag.NamedFlagSets {
 	fss := cliflag.NamedFlagSets{}
-
+	if s == nil || s.Options == nil {
+		return fss
+	}
 	s.Options.AddFlags(&fss)
-
-	// TODO(user): add CLI-only flags here
 
 	return fss
 }
@@ -55,5 +55,7 @@ func (o *ServerRunOptions) Complete(ctx context.Context) (CompletedOptions, erro
 }
 
 func (o completedOptions) Validate() []error {
-	return o.CompletedOptions.Validate()
+	errs := o.CompletedOptions.Validate()
+
+	return errs
 }
