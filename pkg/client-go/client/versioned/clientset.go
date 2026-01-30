@@ -20,7 +20,7 @@ import (
 	fmt "fmt"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
-	nvgrpc "github.com/nvidia/nvsentinel/pkg/client-go/nvgrpc"
+	client "github.com/nvidia/nvsentinel/pkg/grpc/client"
 	grpc "google.golang.org/grpc"
 )
 
@@ -44,13 +44,13 @@ func (c *Clientset) DeviceV1alpha1() devicev1alpha1.DeviceV1alpha1Interface {
 //
 // If you need to customize the connection (e.g. set a logger),
 // use nvgrpc.ClientConnFor() manually and pass the connection to NewForConfigAndClient.
-func NewForConfig(c *nvgrpc.Config) (*Clientset, error) {
+func NewForConfig(c *client.Config) (*Clientset, error) {
 	if c == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
 	configShallowCopy := *c // Shallow copy to avoid mutation
-	conn, err := nvgrpc.ClientConnFor(&configShallowCopy)
+	conn, err := client.ClientConnFor(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func NewForConfig(c *nvgrpc.Config) (*Clientset, error) {
 
 // NewForConfigAndClient creates a new Clientset for the given config and gRPC client connection.
 // The provided gRPC client connection provided takes precedence over the configured transport values.
-func NewForConfigAndClient(c *nvgrpc.Config, conn grpc.ClientConnInterface) (*Clientset, error) {
+func NewForConfigAndClient(c *client.Config, conn grpc.ClientConnInterface) (*Clientset, error) {
 	if c == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
@@ -82,7 +82,7 @@ func NewForConfigAndClient(c *nvgrpc.Config, conn grpc.ClientConnInterface) (*Cl
 
 // NewForConfigOrDie creates a new Clientset for the given config and
 // panics if there is an error in the config or connection setup.
-func NewForConfigOrDie(c *nvgrpc.Config) *Clientset {
+func NewForConfigOrDie(c *client.Config) *Clientset {
 	cs, err := NewForConfig(c)
 	if err != nil {
 		panic(err)

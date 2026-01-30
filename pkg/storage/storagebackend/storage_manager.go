@@ -1,3 +1,17 @@
+//  Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 package storagebackend
 
 import (
@@ -6,6 +20,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/k3s-io/kine/pkg/endpoint"
@@ -99,20 +114,22 @@ func (s *StorageManager) run(ctx context.Context) error {
 
 func (s *StorageManager) waitForSocket(ctx context.Context) error {
 	klog.V(2).InfoS("Waiting for socket to be ready")
+
+	socketPath := strings.TrimPrefix(s.KineSocketPath, "unix://")
 	err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, 5*time.Second, true, func(ctx context.Context) (bool, error) {
-		if _, err := os.Stat(s.KineSocketPath); err != nil {
+		if _, err := os.Stat(socketPath); err != nil {
 			return false, nil
 		}
 
 		d := net.Dialer{Timeout: 100 * time.Millisecond}
-		conn, err := d.DialContext(ctx, "unix", s.KineSocketPath)
+		conn, err := d.DialContext(ctx, "unix", socketPath)
 		if err != nil {
 			return false, nil
 		}
 		conn.Close()
 
-		if err := os.Chmod(s.KineSocketPath, 0660); err != nil {
-			klog.V(4).ErrorS(err, "failed to secure socket, retrying", "path", s.KineSocketPath)
+		if err := os.Chmod(socketPath, 0660); err != nil {
+			klog.V(4).ErrorS(err, "failed to secure socket, retrying", "path", socketPath)
 			return false, nil
 		}
 		return true, nil
@@ -143,4 +160,10 @@ func (s *StorageManager) IsReady() bool {
 	default:
 		return false
 	}
+}
+
+// TestOnlySetReadyChan is an internal hook for unit testing.
+// DO NOT USE in production.
+func (s *StorageManager) TestOnlySetReadyChan(c chan struct{}) {
+	s.readyChan = c
 }

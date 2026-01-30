@@ -46,8 +46,8 @@ func (p *gpuServiceProvider) GroupVersion() schema.GroupVersion {
 	return devicev1alpha1.SchemeGroupVersion
 }
 
-func (p *gpuServiceProvider) BuildGroupInfo() *api.APIGroupInfo {
-	return &api.APIGroupInfo{
+func (p *gpuServiceProvider) NewGroupInfo() *api.GroupInfo {
+	return &api.GroupInfo{
 		GroupName: p.GroupName(),
 		VersionedInstallers: map[string]api.RegistrationFunc{
 			"v1alpha1": func(f storage.StorageFactory, nodeName string, svr *grpc.Server) error {

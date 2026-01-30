@@ -16,6 +16,8 @@ package options
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,90 +61,143 @@ func TestAddFlags(t *testing.T) {
 }
 
 func TestComplete(t *testing.T) {
-	ctx := context.Background()
+	os.Unsetenv("NODE_NAME")
 
-	t.Run("Default values are applied when empty", func(t *testing.T) {
-		opts := NewOptions()
-		opts.NodeName = ""
-		opts.HealthAddress = ""
-
-		completed, err := opts.Complete(ctx)
+	t.Run("Default assignments", func(t *testing.T) {
+		o := NewOptions()
+		completed, err := o.Complete(context.Background())
 		if err != nil {
-			t.Fatalf("Failed to complete options: %v", err)
+			t.Fatalf("Complete failed: %v", err)
 		}
 
 		if completed.HealthAddress != ":50051" {
 			t.Errorf("Expected default health address :50051, got %s", completed.HealthAddress)
 		}
 		if completed.NodeName == "" {
-			t.Error("NodeName should have been populated via Hostname or Env")
+			t.Error("NodeName should have been populated from system hostname")
 		}
 	})
 
-	t.Run("Manual overrides are preserved", func(t *testing.T) {
-		opts := NewOptions()
-		opts.NodeName = "Custom-Node"
-		opts.HealthAddress = "127.0.0.1:8080"
+	t.Run("NodeName normalization", func(t *testing.T) {
+		o := NewOptions()
+		o.NodeName = "  UPPER-case-Node  "
 
-		completed, err := opts.Complete(ctx)
-		if err != nil {
-			t.Fatalf("Failed to complete: %v", err)
+		completed, _ := o.Complete(context.Background())
+
+		expected := "upper-case-node"
+		if completed.NodeName != expected {
+			t.Errorf("Normalization failed. Got %q, want %q", completed.NodeName, expected)
 		}
+	})
 
-		if completed.NodeName != "custom-node" {
-			t.Errorf("Expected lowercased node name, got %s", completed.NodeName)
+	t.Run("Manual override takes precedence", func(t *testing.T) {
+		o := NewOptions()
+		o.NodeName = "manual-override"
+		os.Setenv("NODE_NAME", "env-value")
+		defer os.Unsetenv("NODE_NAME")
+
+		completed, _ := o.Complete(context.Background())
+		if completed.NodeName != "manual-override" {
+			t.Errorf("Manual override should ignore system/env values. Got %q", completed.NodeName)
 		}
 	})
 }
 
 func TestValidate(t *testing.T) {
-	cases := []struct {
+	tests := []struct {
 		name        string
 		modify      func(*Options)
-		expectError bool
+		wantErr     bool
+		errContains string
 	}{
 		{
-			name:        "Valid options",
-			modify:      func(o *Options) {},
-			expectError: false,
+			name:    "Valid configuration",
+			modify:  func(o *Options) { o.NodeName = "valid-node" },
+			wantErr: false,
 		},
 		{
-			name: "Invalid DNS NodeName",
+			name: "Invalid NodeName (DNS-1123)",
 			modify: func(o *Options) {
-				o.NodeName = "Invalid_Name_With_Underscores"
+				o.NodeName = "Invalid_Node_Name" // underscores and caps not allowed
 			},
-			expectError: true,
+			wantErr:     true,
+			errContains: "hostname-override \"invalid_node_name\":", // lowercased
 		},
 		{
-			name: "Invalid HealthAddress port",
+			name: "Invalid Health Address",
 			modify: func(o *Options) {
-				o.HealthAddress = "localhost:999999"
+				o.HealthAddress = "127.0.0.1:99999" // Port out of range
 			},
-			expectError: true,
+			wantErr:     true,
+			errContains: "health-probe-bind-address \"127.0.0.1:99999\":",
 		},
 		{
-			name: "Negative ShutdownGracePeriod",
+			name: "Address Collision",
 			modify: func(o *Options) {
-				o.ShutdownGracePeriod = -1 * time.Second
+				o.HealthAddress = ":8080"
+				o.MetricsAddress = ":8080"
 			},
-			expectError: true,
+			wantErr:     true,
+			errContains: "must not be the same (:8080)",
+		},
+		{
+			name: "Negative Grace Period",
+			modify: func(o *Options) {
+				o.ShutdownGracePeriod = -5 * time.Second
+			},
+			wantErr:     true,
+			errContains: "shutdown-grace-period: -5s must be greater than or equal to 0s",
+		},
+		{
+			name: "Grace Period Too Long",
+			modify: func(o *Options) {
+				o.ShutdownGracePeriod = 11 * time.Minute
+			},
+			wantErr:     true,
+			errContains: "shutdown-grace-period: 11m0s must be 10m or less",
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			opts := NewOptions()
-			tc.modify(opts)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := NewOptions()
+			tt.modify(o)
 
-			completed, _ := opts.Complete(context.Background())
-			errs := completed.Validate()
-
-			if tc.expectError && len(errs) == 0 {
-				t.Errorf("Expected errors but got none")
+			completed, err := o.Complete(context.Background())
+			if err != nil {
+				t.Fatalf("Complete failed in test setup: %v", err)
 			}
-			if !tc.expectError && len(errs) > 0 {
-				t.Errorf("Expected no errors but got: %v", errs)
+
+			errs := completed.Validate()
+			if (len(errs) > 0) != tt.wantErr {
+				t.Errorf("Validate() errors = %v, wantErr %v", errs, tt.wantErr)
+			}
+
+			if tt.wantErr && len(errs) > 0 {
+				found := false
+				for _, e := range errs {
+					if strings.Contains(e.Error(), tt.errContains) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Errors %v did not contain %q", errs, tt.errContains)
+				}
 			}
 		})
+	}
+}
+
+func TestNilOptions(t *testing.T) {
+	var o *Options
+	_, err := o.Complete(context.Background())
+	if err != nil {
+		t.Error("Complete on nil should not error")
+	}
+
+	var c *CompletedOptions
+	if errs := c.Validate(); len(errs) != 0 {
+		t.Error("Validate on nil should return nil/empty slice")
 	}
 }

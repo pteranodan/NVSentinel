@@ -26,7 +26,7 @@ import (
 	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
 	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/scheme"
 	informers "github.com/nvidia/nvsentinel/pkg/client-go/informers/externalversions"
-	"github.com/nvidia/nvsentinel/pkg/client-go/nvgrpc"
+	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -39,9 +39,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	pb "github.com/nvidia/nvsentinel/api/gen/go/device/v1alpha1"
+	pb "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
 )
 
 func TestClientset_EndToEnd(t *testing.T) {
@@ -69,7 +69,7 @@ func TestClientset_EndToEnd(t *testing.T) {
 	}
 	defer conn.Close()
 
-	config := &nvgrpc.Config{Target: "passthrough://bufconn"}
+	config := &client.Config{Target: "passthrough://bufconn"}
 	cs, err := versioned.NewForConfigAndClient(config, conn)
 	if err != nil {
 		t.Fatalf("Failed to create clientset: %v", err)
@@ -235,7 +235,7 @@ func TestClientset_EndToEnd(t *testing.T) {
 
 		// Initial snapshot
 		var gpu devicev1alpha1.GPU
-		key := client.ObjectKey{Name: "gpu-1"}
+		key := ctrlclient.ObjectKey{Name: "gpu-1"}
 		if err := c.Get(ctx, key, &gpu); err != nil {
 			t.Fatalf("Failed to read initial state from cache: %v", err)
 		}

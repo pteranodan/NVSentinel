@@ -1,3 +1,17 @@
+//  Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 package apiserver
 
 import (
@@ -31,7 +45,7 @@ type DeviceAPIServer struct {
 	HealthAddress       string
 	MetricsAddress      string
 	ShutdownGracePeriod time.Duration
-	APIGroups           []*api.APIGroupInfo
+	APIGroups           []*api.GroupInfo
 
 	DeviceServer    *grpc.Server
 	HealthServer    *health.Server
@@ -131,8 +145,7 @@ func (s *DeviceAPIServer) run(ctx context.Context) error {
 
 	if s.HealthServer != nil {
 		s.HealthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
-		logger.V(2).Info("gRPC serving status updated",
-			"status", healthpb.HealthCheckResponse_SERVING.String())
+		logger.V(2).Info("gRPC serving status updated", "status", healthpb.HealthCheckResponse_SERVING.String())
 	}
 
 	logger.Info("Starting Device API Server", "address", s.BindAddress)
@@ -149,8 +162,7 @@ func (s *DeviceAPIServer) handleShutdown(ctx context.Context, socketPath string)
 
 	if s.HealthServer != nil {
 		s.HealthServer.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
-		logger.V(2).Info("gRPC serving status updated",
-			"status", healthpb.HealthCheckResponse_NOT_SERVING.String())
+		logger.V(2).Info("gRPC serving status updated", "status", healthpb.HealthCheckResponse_NOT_SERVING.String())
 	}
 
 	logger.Info("Shutting down servers",
@@ -182,9 +194,8 @@ func (s *DeviceAPIServer) handleShutdown(ctx context.Context, socketPath string)
 
 	logger.V(2).Info("gRPC servers stopped successfully")
 
-	if err := os.Remove(socketPath); err != nil {
-		logger.Error(err, "failed to remove socket file during shutdown",
-			"path", socketPath)
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+		logger.Error(err, "Failed to remove socket file during shutdown", "path", socketPath)
 	}
 }
 
@@ -231,11 +242,11 @@ func (s *DeviceAPIServer) serveHealth(ctx context.Context) {
 
 	lis, err := net.Listen("tcp", s.HealthAddress)
 	if err != nil {
-		logger.Error(err, "failed to listen on health port", "address", s.HealthAddress)
+		logger.Error(err, "Failed to listen on health port", "address", s.HealthAddress)
 		return
 	}
 
-	logger.V(2).Info("Starting TCP Health Server", "address", s.HealthAddress)
+	logger.V(2).Info("Starting health server", "address", s.HealthAddress)
 	if err := s.AdminServer.Serve(lis); err != nil && err != grpc.ErrServerStopped {
 		logger.Error(err, "Health server stopped unexpectedly")
 	}
@@ -259,20 +270,20 @@ func (s *DeviceAPIServer) serveMetrics(ctx context.Context) {
 
 	go func() {
 		<-ctx.Done()
-		logger.V(2).Info("Shutting down HTTP metrics server", "address", s.MetricsAddress)
+		logger.V(2).Info("Shutting down metrics server", "protocol", "HTTP", "address", s.MetricsAddress)
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), s.ShutdownGracePeriod)
 		defer cancel()
 
 		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
-			logger.Error(err, "Metrics server graceful shutdown failed; forcing close")
+			logger.Error(err, "Metrics server graceful shutdown failed; forcing close", "protocol", "HTTP", "address", s.MetricsAddress)
 			metricsSrv.Close()
 		}
 	}()
 
-	logger.V(2).Info("Starting HTTP Metrics Server", "address", s.MetricsAddress)
+	logger.V(2).Info("Starting metrics server", "protocol", "HTTP", "address", s.MetricsAddress)
 	if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Error(err, "Metrics server failed to listen and serve on port", "address", s.MetricsAddress)
+		logger.Error(err, "Metrics server failed to listen and serve", "protocol", "HTTP", "address", s.MetricsAddress)
 	}
 }
 
@@ -300,13 +311,11 @@ func (s *DeviceAPIServer) waitForStorage(ctx context.Context) error {
 			return ctx.Err()
 
 		case <-s.StorageManager.Ready():
-			logger.V(2).Info("Storage backend is ready",
-				"duration", time.Since(startTime).Round(time.Second))
+			logger.V(2).Info("Storage backend is ready", "duration", time.Since(startTime).Round(time.Second))
 			return nil
 
 		case <-heartbeat.C:
-			logger.Info(msg,
-				"elapsed", time.Since(startTime).Round(time.Second))
+			logger.Info(msg, "elapsed", time.Since(startTime).Round(time.Second))
 		}
 	}
 }

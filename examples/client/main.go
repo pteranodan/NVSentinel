@@ -29,7 +29,7 @@ import (
 
 	"github.com/go-logr/stdr"
 	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
-	"github.com/nvidia/nvsentinel/pkg/client-go/nvgrpc"
+	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 )
 
 func main() {
@@ -38,13 +38,13 @@ func main() {
 	// Determine the connection target.
 	// If the environment variable NVIDIA_DEVICE_API_TARGET is not set, use the
 	// default socket path: unix:///var/run/nvidia-device-api/device-api.sock
-	target := os.Getenv(nvgrpc.NvidiaDeviceAPITargetEnvVar)
+	target := os.Getenv(client.NvidiaDeviceAPITargetEnvVar)
 	if target == "" {
-		target = nvgrpc.DefaultNvidiaDeviceAPISocket
+		target = client.DefaultNvidiaDeviceAPISocket
 	}
 
 	// Initialize the versioned clientset using the gRPC transport.
-	config := &nvgrpc.Config{Target: target}
+	config := &client.Config{Target: target}
 
 	clientset, err := versioned.NewForConfig(config)
 	if err != nil {

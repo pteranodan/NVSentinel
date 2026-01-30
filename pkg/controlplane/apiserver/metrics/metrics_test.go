@@ -15,38 +15,38 @@
 package metrics
 
 import (
-	"sync"
+	"testing"
 
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
-	"k8s.io/klog/v2"
 )
 
-// ServerMetrics wraps the gRPC metrics and the private registry to avoid
-// collisions with global metrics (e.g., Kine/etcd).
-type ServerMetrics struct {
-	Registry     *prometheus.Registry
-	Collectors   *grpcprom.ServerMetrics
-	registerOnce sync.Once
-}
-
-var (
-	DefaultServerMetrics = &ServerMetrics{
+func TestServerMetrics_Register(t *testing.T) {
+	m := &ServerMetrics{
 		Registry: prometheus.NewRegistry(),
 		Collectors: grpcprom.NewServerMetrics(
 			grpcprom.WithServerHandlingTimeHistogram(),
 		),
 	}
-)
 
-func (m *ServerMetrics) Register() {
-	m.registerOnce.Do(func() {
-		if err := m.Registry.Register(m.Collectors); err != nil {
-			klog.ErrorS(err, "failed to register gRPC metrics to private registry")
-		}
-	})
+	m.Register()
+	m.Register() // Second call should not panic
+
+	err := m.Registry.Register(m.Collectors)
+	if err == nil {
+		t.Error("expected an 'already registered' error when registering collectors a second time, but got nil")
+	}
+
+	if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+		t.Errorf("expected AlreadyRegisteredError, got %T: %v", err, err)
+	}
 }
 
-func (m *ServerMetrics) GetGatherer() prometheus.Gatherer {
-	return m.Registry
+func TestDefaultServerMetrics(t *testing.T) {
+	if DefaultServerMetrics.Registry == nil {
+		t.Fatal("DefaultServerMetrics.Registry is nil")
+	}
+	if DefaultServerMetrics.Collectors == nil {
+		t.Fatal("DefaultServerMetrics.Collectors is nil")
+	}
 }

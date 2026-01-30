@@ -16,11 +16,13 @@ package grpc
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/spf13/pflag"
+	"google.golang.org/grpc"
 )
 
 func TestAddFlags(t *testing.T) {
@@ -55,120 +57,109 @@ func TestAddFlags(t *testing.T) {
 	}
 }
 
-func TestComplete(t *testing.T) {
-	testCases := []struct {
-		name     string
-		input    *Options
-		expected Options
+func TestCompleteAndValidate(t *testing.T) {
+	tests := []struct {
+		name        string
+		modify      func(*Options)
+		wantErr     bool
+		errContains string
 	}{
 		{
-			name:     "returns empty struct when nil",
-			input:    nil,
-			expected: Options{},
+			name:    "Valid defaults",
+			modify:  func(o *Options) {},
+			wantErr: false,
 		},
 		{
-			name:  "defaults empty options",
-			input: &Options{},
-			expected: Options{
-				BindAddress:          "unix:///var/run/nvidia-device-api/device-api.sock",
-				MaxConcurrentStreams: 250,
-				MaxRecvMsgSize:       4194304,
-				MaxSendMsgSize:       16777216,
-				MaxConnectionIdle:    5 * time.Minute,
-				KeepAliveTime:        1 * time.Minute,
-				KeepAliveTimeout:     10 * time.Second,
-				MinPingInterval:      5 * time.Second,
-				PermitWithoutStream:  true,
+			name: "Invalid scheme",
+			modify: func(o *Options) {
+				o.BindAddress = "tcp://127.0.0.1:8080"
 			},
+			wantErr:     true,
+			errContains: "bind-address \"tcp://127.0.0.1:8080\": must start with 'unix://'",
 		},
 		{
-			name: "enforces permit without stream",
-			input: &Options{
-				PermitWithoutStream: false,
+			name: "Trailing slash in socket path",
+			modify: func(o *Options) {
+				o.BindAddress = "unix:///var/run/test/"
 			},
-			expected: Options{
-				BindAddress:          "unix:///var/run/nvidia-device-api/device-api.sock",
-				MaxConcurrentStreams: 250,
-				MaxRecvMsgSize:       4194304,
-				MaxSendMsgSize:       16777216,
-				MaxConnectionIdle:    5 * time.Minute,
-				KeepAliveTime:        1 * time.Minute,
-				KeepAliveTimeout:     10 * time.Second,
-				MinPingInterval:      5 * time.Second,
-				PermitWithoutStream:  true,
+			wantErr:     true,
+			errContains: "bind-address path \"/var/run/test/\": must not end with a trailing slash",
+		},
+		{
+			name: "Keepalive Timeout too high",
+			modify: func(o *Options) {
+				o.KeepAliveTime = 10 * time.Second
+				o.KeepAliveTimeout = 20 * time.Second
 			},
+			wantErr:     true,
+			errContains: "grpc-keepalive-timeout: 20s must be less than grpc-keepalive-time (10s)",
+		},
+		{
+			name: "Exceed MaxRecvMsgSize",
+			modify: func(o *Options) {
+				o.MaxRecvMsgSize = 10 * 1024 * 1024 // 10MiB
+			},
+			wantErr:     true,
+			errContains: "max-recv-msg-size: 10485760 must be 4MiB or less",
+		},
+		{
+			name: "Min Ping Interval violation",
+			modify: func(o *Options) {
+				o.MinPingInterval = 1 * time.Second
+			},
+			wantErr:     true,
+			errContains: "min-ping-interval: 1s must be at least 5s",
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			completed, _ := tc.input.Complete()
-			if tc.input == nil {
-				if completed.completedOptions != nil {
-					t.Error("internal pointer must be nil when input is nil")
-				}
-				return
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := NewOptions()
+			tt.modify(o)
+
+			completed, err := o.Complete()
+			if err != nil {
+				t.Fatalf("Complete failed: %v", err)
 			}
-			if !reflect.DeepEqual(tc.expected, completed.Options) {
-				t.Errorf("Difference:\n%s", cmp.Diff(tc.expected, completed.Options))
+			errs := completed.Validate()
+
+			if (len(errs) > 0) != tt.wantErr {
+				t.Errorf("Validate() errors = %v, wantErr %v", errs, tt.wantErr)
+			}
+
+			if tt.wantErr && len(errs) > 0 {
+				found := false
+				for _, e := range errs {
+					if strings.Contains(e.Error(), tt.errContains) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("None of the errors %v contain %q", errs, tt.errContains)
+				}
 			}
 		})
 	}
 }
 
-func TestValidate(t *testing.T) {
-	testCases := []struct {
-		name        string
-		modify      func(*Options)
-		expectError bool
-	}{
-		{
-			name:        "default options are valid",
-			modify:      func(o *Options) {},
-			expectError: false,
-		},
-		{
-			name: "scheme must be 'unix://'",
-			modify: func(o *Options) {
-				o.BindAddress = "tcp://127.0.0.1:8080"
-			},
-			expectError: true,
-		},
-		{
-			name: "path cannot be relative",
-			modify: func(o *Options) {
-				o.BindAddress = "unix://relative.sock"
-			},
-			expectError: true,
-		},
-		{
-			name: "keepalive timeout greater than time",
-			modify: func(o *Options) {
-				o.KeepAliveTime = 10 * time.Second
-				o.KeepAliveTimeout = 20 * time.Second
-			},
-			expectError: true,
-		},
-		{
-			name: "permit without stream must be true",
-			modify: func(o *Options) {
-				o.PermitWithoutStream = false
-			},
-			expectError: true,
-		},
+func TestApplyTo(t *testing.T) {
+	o := NewOptions()
+	completed, _ := o.Complete()
+
+	var bindAddr string
+	var serverOpts []grpc.ServerOption
+
+	err := completed.ApplyTo(&bindAddr, &serverOpts)
+	if err != nil {
+		t.Fatalf("ApplyTo failed: %v", err)
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			o := NewOptions()
-			tc.modify(o)
-			errs := o.Validate()
-			if tc.expectError && len(errs) == 0 {
-				t.Error("Error expected")
-			}
-			if !tc.expectError && len(errs) > 0 {
-				t.Errorf("Unexpected error: %v", errs)
-			}
-		})
+	if bindAddr != completed.BindAddress {
+		t.Errorf("Bind address not applied: got %s, want %s", bindAddr, completed.BindAddress)
+	}
+
+	if len(serverOpts) != 5 {
+		t.Errorf("Expected 5 server options, got %d", len(serverOpts))
 	}
 }

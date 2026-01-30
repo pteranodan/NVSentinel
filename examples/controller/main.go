@@ -32,14 +32,14 @@ import (
 	toolscache "k8s.io/client-go/tools/cache"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
 	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
 	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/scheme"
 	informers "github.com/nvidia/nvsentinel/pkg/client-go/informers/externalversions"
-	"github.com/nvidia/nvsentinel/pkg/client-go/nvgrpc"
+	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 )
 
 func main() {
@@ -49,13 +49,13 @@ func main() {
 	// Determine the connection target.
 	// If the environment variable NVIDIA_DEVICE_API_TARGET is not set, use the
 	// default socket path: unix:///var/run/nvidia-device-api/device-api.sock
-	target := os.Getenv(nvgrpc.NvidiaDeviceAPITargetEnvVar)
+	target := os.Getenv(client.NvidiaDeviceAPITargetEnvVar)
 	if target == "" {
-		target = nvgrpc.DefaultNvidiaDeviceAPISocket
+		target = client.DefaultNvidiaDeviceAPISocket
 	}
 
 	// Initialize the versioned Clientset using the gRPC transport.
-	config := &nvgrpc.Config{Target: target}
+	config := &client.Config{Target: target}
 
 	clientset, err := versioned.NewForConfig(config)
 	if err != nil {
@@ -138,7 +138,7 @@ func main() {
 
 // GPUReconciler reconciles GPUs using the local gRPC cache.
 type GPUReconciler struct {
-	client.Client
+	ctrlclient.Client
 }
 
 func (r *GPUReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -147,7 +147,7 @@ func (r *GPUReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	var gpu devicev1alpha1.GPU
 	// The Get call is transparently routed through the injected gRPC-backed informer.
 	if err := r.Get(ctx, req.NamespacedName, &gpu); err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, ctrlclient.IgnoreNotFound(err)
 	}
 
 	log.Info("Reconciled GPU", "name", gpu.Name, "uuid", gpu.Spec.UUID)

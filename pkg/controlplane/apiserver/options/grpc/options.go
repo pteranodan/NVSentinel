@@ -135,42 +135,45 @@ func (o *Options) Validate() []error {
 	allErrors := []error{}
 
 	if !strings.HasPrefix(o.BindAddress, "unix://") {
-		allErrors = append(allErrors, fmt.Errorf("invalid bind-address %q: must start with 'unix://'", o.BindAddress))
+		allErrors = append(allErrors, fmt.Errorf("bind-address %q: must start with 'unix://'", o.BindAddress))
 		return allErrors
 	}
 	path := strings.TrimPrefix(o.BindAddress, "unix://")
 	if !filepath.IsAbs(path) {
-		allErrors = append(allErrors, fmt.Errorf("invalid bind-address path %q: must be an absolute path", path))
+		allErrors = append(allErrors, fmt.Errorf("bind-address path %q: must be an absolute path", path))
 	}
 	if strings.HasSuffix(path, string(filepath.Separator)) {
-		allErrors = append(allErrors, fmt.Errorf("invalid bind-address path %q: cannot end with a trailing slash", path))
+		allErrors = append(allErrors, fmt.Errorf("bind-address path %q: must not end with a trailing slash", path))
 	}
 
 	if o.MaxConcurrentStreams > 10000 {
-		allErrors = append(allErrors, fmt.Errorf("invalid max-streams-per-connection %d: must be no more than 10000", o.MaxConcurrentStreams))
+		allErrors = append(allErrors, fmt.Errorf("max-streams-per-connection: %d must be 10000 or less", o.MaxConcurrentStreams))
 	}
 	if o.MaxRecvMsgSize > 4194304 {
-		allErrors = append(allErrors, fmt.Errorf("invalid max-recv-msg-size %d: must be no more than 4MiB", o.MaxRecvMsgSize))
+		allErrors = append(allErrors, fmt.Errorf("max-recv-msg-size: %d must be 4MiB or less", o.MaxRecvMsgSize))
 	}
 	if o.MaxSendMsgSize > 16777216 {
-		allErrors = append(allErrors, fmt.Errorf("invalid max-send-msg-size %d: must be no more than 16MiB", o.MaxSendMsgSize))
+		allErrors = append(allErrors, fmt.Errorf("max-send-msg-size: %d must be 16MiB or less", o.MaxSendMsgSize))
 	}
 
 	if o.KeepAliveTime < 0 {
-		allErrors = append(allErrors, fmt.Errorf("invalid grpc-keepalive-time %v: must be greater than or equal to 0", o.KeepAliveTime))
+		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-time: %v must be 0s or greater", o.KeepAliveTime))
 	}
 	if o.KeepAliveTimeout < 0 {
-		allErrors = append(allErrors, fmt.Errorf("invalid grpc-keepalive-timeout %v: must be greater than or equal to 0", o.KeepAliveTimeout))
+		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-timeout: %v must be 0s or greater", o.KeepAliveTimeout))
+	}
+	if o.MinPingInterval < 5*time.Second {
+		allErrors = append(allErrors, fmt.Errorf("min-ping-interval: %v must be at least 5s", o.MinPingInterval))
 	}
 	if o.KeepAliveTimeout >= o.KeepAliveTime && o.KeepAliveTime > 0 {
-		allErrors = append(allErrors, fmt.Errorf("invalid grpc-keepalive-timeout %v: must be less than grpc-keepalive-time (%v)", o.KeepAliveTimeout, o.KeepAliveTime))
+		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-timeout: %v must be less than grpc-keepalive-time (%v)", o.KeepAliveTimeout, o.KeepAliveTime))
 	}
 	if o.KeepAliveTime < o.MinPingInterval && o.KeepAliveTime > 0 {
-		allErrors = append(allErrors, fmt.Errorf("invalid grpc-keepalive-time %v: must be greater than or equal to min-ping-interval (%v)", o.KeepAliveTime, o.MinPingInterval))
+		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-time: %v must be greater than or equal to min-ping-interval (%v)", o.KeepAliveTime, o.MinPingInterval))
 	}
 
 	if !o.PermitWithoutStream {
-		allErrors = append(allErrors, fmt.Errorf("invalid permit-without-stream %v: must be true to allow keepalive pings without active streams", o.PermitWithoutStream))
+		allErrors = append(allErrors, fmt.Errorf("permit-without-stream: %v must be true to allow keepalive pings without active streams", o.PermitWithoutStream))
 	}
 
 	return allErrors

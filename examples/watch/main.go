@@ -36,7 +36,7 @@ import (
 	"github.com/go-logr/stdr"
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
 	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
-	"github.com/nvidia/nvsentinel/pkg/client-go/nvgrpc"
+	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 )
 
 //nolint:cyclop,gocritic // This is an example; complexity and exitAfterDefer is acceptable for clarity.
@@ -48,9 +48,9 @@ func main() {
 	// Determine the connection target.
 	// If the environment variable NVIDIA_DEVICE_API_TARGET is not set, use the
 	// default socket path: unix:///var/run/nvidia-device-api/device-api.sock
-	target := os.Getenv(nvgrpc.NvidiaDeviceAPITargetEnvVar)
+	target := os.Getenv(client.NvidiaDeviceAPITargetEnvVar)
 	if target == "" {
-		target = nvgrpc.DefaultNvidiaDeviceAPISocket
+		target = client.DefaultNvidiaDeviceAPISocket
 	}
 
 	// tracingInterceptor injects metadata (x-request-id) into outgoing requests.
@@ -82,16 +82,16 @@ func main() {
 	}
 
 	// Configure manual DialOptions for transport-level control.
-	opts := []nvgrpc.DialOption{
-		nvgrpc.WithLogger(logger),
-		nvgrpc.WithUnaryInterceptor(tracingInterceptor),
-		nvgrpc.WithStreamInterceptor(watchMonitorInterceptor),
+	opts := []client.DialOption{
+		client.WithLogger(logger),
+		client.WithUnaryInterceptor(tracingInterceptor),
+		client.WithStreamInterceptor(watchMonitorInterceptor),
 	}
 
 	// Initialize the underlying gRPC connection manually.
-	config := &nvgrpc.Config{Target: target}
+	config := &client.Config{Target: target}
 
-	conn, err := nvgrpc.ClientConnFor(config, opts...)
+	conn, err := client.ClientConnFor(config, opts...)
 	if err != nil {
 		logger.Error(err, "unable to connect to gRPC target")
 		os.Exit(1)

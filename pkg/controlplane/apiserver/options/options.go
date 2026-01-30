@@ -129,21 +129,21 @@ func (o *CompletedOptions) Validate() []error {
 	allErrors := []error{}
 
 	if o.NodeName == "" {
-		allErrors = append(allErrors, fmt.Errorf("hostname-override is required"))
+		allErrors = append(allErrors, fmt.Errorf("hostname-override: required"))
 	} else {
 		if validationErrors := validation.IsDNS1123Subdomain(o.NodeName); len(validationErrors) > 0 {
 			for _, errDesc := range validationErrors {
-				allErrors = append(allErrors, fmt.Errorf("hostname-override %q is invalid: %s", o.NodeName, errDesc))
+				allErrors = append(allErrors, fmt.Errorf("hostname-override %q: %s", o.NodeName, errDesc))
 			}
 		}
 	}
 
 	if o.HealthAddress == "" {
-		allErrors = append(allErrors, fmt.Errorf("health-probe-bind-address is required"))
+		allErrors = append(allErrors, fmt.Errorf("health-probe-bind-address: required"))
 	} else {
 		if validationErrors := nvvalidation.IsValidAddress(o.HealthAddress); len(validationErrors) > 0 {
 			for _, errDesc := range validationErrors {
-				allErrors = append(allErrors, fmt.Errorf("health-probe-bind-address %q is invalid: %s", o.HealthAddress, errDesc))
+				allErrors = append(allErrors, fmt.Errorf("health-probe-bind-address %q: %s", o.HealthAddress, errDesc))
 			}
 		}
 	}
@@ -151,17 +151,22 @@ func (o *CompletedOptions) Validate() []error {
 	if o.MetricsAddress != "" {
 		if validationErrors := nvvalidation.IsValidAddress(o.MetricsAddress); len(validationErrors) > 0 {
 			for _, errDesc := range validationErrors {
-				allErrors = append(allErrors, fmt.Errorf("metrics-bind-address %q is invalid: %s", o.MetricsAddress, errDesc))
+				allErrors = append(allErrors, fmt.Errorf("metrics-bind-address %q: %s", o.MetricsAddress, errDesc))
 			}
 		}
 	}
 
+	if o.HealthAddress != "" && o.HealthAddress == o.MetricsAddress {
+		allErrors = append(allErrors, fmt.Errorf("health-probe-bind-address and metrics-bind-address: must not be the same (%s)", o.HealthAddress))
+	}
+
 	if o.ShutdownGracePeriod < 0 {
-		allErrors = append(allErrors, fmt.Errorf("invalid shutdown-grace-period %v: must be greater than or equal to 0", o.ShutdownGracePeriod))
+		allErrors = append(allErrors, fmt.Errorf("shutdown-grace-period: %v must be greater than or equal to 0s", o.ShutdownGracePeriod))
+	} else if o.ShutdownGracePeriod > 10*time.Minute {
+		allErrors = append(allErrors, fmt.Errorf("shutdown-grace-period: %v must be 10m or less", o.ShutdownGracePeriod))
 	}
 
 	allErrors = append(allErrors, o.GRPC.Validate()...)
-
 	allErrors = append(allErrors, o.Storage.Validate()...)
 
 	if o.Logs != nil {

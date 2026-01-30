@@ -22,7 +22,7 @@ import (
 	logr "github.com/go-logr/logr"
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
 	pb "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
-	nvgrpc "github.com/nvidia/nvsentinel/pkg/client-go/nvgrpc"
+	client "github.com/nvidia/nvsentinel/pkg/grpc/client"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -128,7 +128,7 @@ func (c *gpus) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface,
 		return nil, err
 	}
 
-	return nvgrpc.NewWatcher(&gpusStreamAdapter{stream: stream}, cancel, c.logger), nil
+	return client.NewWatcher(&gpusStreamAdapter{stream: stream}, cancel, c.logger), nil
 }
 
 // gpusStreamAdapter wraps the GPU gRPC stream to provide events.

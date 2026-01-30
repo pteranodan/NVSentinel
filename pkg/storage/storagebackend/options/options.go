@@ -1,8 +1,23 @@
+//  Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 package options
 
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/k3s-io/kine/pkg/endpoint"
@@ -61,19 +76,28 @@ func (o *Options) Complete() (CompletedOptions, error) {
 		return CompletedOptions{}, nil
 	}
 
-	o.KineConfig.Endpoint = fmt.Sprintf("sqlite://%s?_journal=WAL&_timeout=5000&_synchronous=NORMAL&_fk=1", o.DatabasePath)
-	o.DatabaseDir = filepath.Dir(o.DatabasePath)
+	if o.KineSocketPath == "" {
+		o.KineSocketPath = "/var/run/nvidia-device-api/kine.sock"
+	}
+	if o.KineSocketPath != "" && o.KineConfig.Listener == "" {
+		o.KineConfig.Listener = "unix://" + o.KineSocketPath
+	}
 
-	o.KineSocketPath = "/var/run/nvidia-device-api/kine.sock"
-	o.KineConfig.Listener = "unix://" + o.KineSocketPath
+	if o.DatabasePath != "" {
+		o.DatabaseDir = filepath.Dir(o.DatabasePath)
+	}
 
-	if len(o.Etcd.StorageConfig.Transport.ServerList) == 0 {
-		o.Etcd.StorageConfig.Transport.ServerList = []string{o.KineConfig.Listener}
+	if o.KineConfig.Endpoint == "" && o.DatabasePath != "" {
+		o.KineConfig.Endpoint = fmt.Sprintf("sqlite://%s?_journal=WAL&_timeout=5000&_synchronous=NORMAL&_fk=1", o.DatabasePath)
 	}
 
 	o.KineConfig.CompactInterval = o.CompactionInterval
 	o.KineConfig.CompactBatchSize = o.CompactionBatchSize
 	o.KineConfig.NotifyInterval = o.WatchProgressNotifyInterval
+
+	if len(o.Etcd.StorageConfig.Transport.ServerList) == 0 {
+		o.Etcd.StorageConfig.Transport.ServerList = []string{o.KineConfig.Listener}
+	}
 
 	completed := completedOptions{
 		Options: *o,
@@ -92,20 +116,24 @@ func (o *Options) Validate() []error {
 	allErrors := []error{}
 
 	if o.DatabasePath == "" {
-		allErrors = append(allErrors, fmt.Errorf("database-path is required"))
+		allErrors = append(allErrors, fmt.Errorf("database-path: required"))
 	} else if !filepath.IsAbs(o.DatabasePath) {
-		allErrors = append(allErrors, fmt.Errorf("invalid database-path %q: must be an absolute path", o.DatabasePath))
+		allErrors = append(allErrors, fmt.Errorf("database-path %q: must be an absolute path", o.DatabasePath))
 	}
 
 	if o.DatabaseDir == "" {
-		allErrors = append(allErrors, fmt.Errorf("internal error: database directory was not intialized"))
+		allErrors = append(allErrors, fmt.Errorf("database directory: not initialized"))
 	}
 
 	if o.CompactionInterval < 0 {
-		allErrors = append(allErrors, fmt.Errorf("invalid compaction-interval %v: must be non-negative", o.CompactionInterval))
+		allErrors = append(allErrors, fmt.Errorf("compaction-interval: %v must be 0s or greater", o.CompactionInterval))
 	}
 	if o.CompactionBatchSize <= 0 {
-		allErrors = append(allErrors, fmt.Errorf("invalid compaction-batch-size %q: must be greater than 0", o.CompactionBatchSize))
+		allErrors = append(allErrors, fmt.Errorf("compaction-batch-size: %v must be greater than 0", o.CompactionBatchSize))
+	}
+
+	if o.WatchProgressNotifyInterval < 0 {
+		allErrors = append(allErrors, fmt.Errorf("watch-progress-notify-interval: %v must be 0s or greater", o.WatchProgressNotifyInterval))
 	}
 
 	if o.Etcd != nil {
@@ -113,7 +141,23 @@ func (o *Options) Validate() []error {
 	}
 
 	if o.KineSocketPath == "" {
-		allErrors = append(allErrors, fmt.Errorf("internal error: storage socket path was not initialized"))
+		allErrors = append(allErrors, fmt.Errorf("kine-socket-path: not initialized"))
+	} else if !filepath.IsAbs(o.KineSocketPath) {
+		allErrors = append(allErrors, fmt.Errorf("kine-socket-path %q: must be an absolute path", o.KineSocketPath))
+	}
+
+	if o.KineConfig.Listener == "" {
+		allErrors = append(allErrors, fmt.Errorf("kine-listener: not initialized"))
+	} else {
+		prefix := "unix://"
+		if !strings.HasPrefix(o.KineConfig.Listener, prefix) {
+			allErrors = append(allErrors, fmt.Errorf("kine-listener %q: must start with %q", o.KineConfig.Listener, prefix))
+		}
+
+		actualPath := strings.TrimPrefix(o.KineConfig.Listener, prefix)
+		if actualPath != o.KineSocketPath {
+			allErrors = append(allErrors, fmt.Errorf("kine-listener path %q: does not match kine-socket-path %q", actualPath, o.KineSocketPath))
+		}
 	}
 
 	return allErrors

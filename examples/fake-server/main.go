@@ -41,8 +41,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	pb "github.com/nvidia/nvsentinel/api/gen/go/device/v1alpha1"
-	"github.com/nvidia/nvsentinel/pkg/client-go/nvgrpc"
+	pb "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
+	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 )
 
 func main() {
@@ -51,9 +51,9 @@ func main() {
 	// Determine the connection target.
 	// If the environment variable NVIDIA_DEVICE_API_TARGET is not set, use the
 	// default socket path: unix:///var/run/nvidia-device-api/device-api.sock
-	target := os.Getenv(nvgrpc.NvidiaDeviceAPITargetEnvVar)
+	target := os.Getenv(client.NvidiaDeviceAPITargetEnvVar)
 	if target == "" {
-		target = nvgrpc.DefaultNvidiaDeviceAPISocket
+		target = client.DefaultNvidiaDeviceAPISocket
 	}
 
 	socketPath := strings.TrimPrefix(target, "unix://")

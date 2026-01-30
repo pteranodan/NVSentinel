@@ -122,7 +122,7 @@ func (g *genClientForType) GenerateType(c *generator.Context, t *types.Type, w i
 		"runtime":          c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/runtime", Name: "Object"}),
 		"watchInterface":   c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/watch", Name: "Interface"}),
 		"logr":             c.Universe.Type(types.Name{Package: "github.com/go-logr/logr", Name: "Logger"}),
-		"nvgrpc":           c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/client-go/nvgrpc", Name: "NewWatcher"}),
+		"nvgrpc":           c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "NewWatcher"}),
 		"pb":               g.protoPackage.Alias,
 		"apiPackage":       c.Universe.Type(types.Name{Package: g.inputPackage, Name: "Ignored"}),
 		"ToProto":          c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProto"}),
