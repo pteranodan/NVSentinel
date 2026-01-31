@@ -105,21 +105,18 @@ func Run(ctx context.Context, opts options.CompletedOptions) error {
 	if err != nil {
 		return err
 	}
-	logger.Info("config completed")
 
 	// Initialize and prepare storage to be injected into the server for readiness.
 	storage, err := completed.Storage.New()
 	if err != nil {
 		return err
 	}
-	logger.Info("storage completed")
 
 	// Inject storage into the server to coordinate startup.
 	server, err := completed.APIs.New(storage)
 	if err != nil {
 		return err
 	}
-	logger.Info("server completed")
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -128,7 +125,6 @@ func Run(ctx context.Context, opts options.CompletedOptions) error {
 		if err != nil {
 			return err
 		}
-		logger.Info("storage prepared")
 
 		return preparedStorage.Run(ctx)
 	})
@@ -138,7 +134,6 @@ func Run(ctx context.Context, opts options.CompletedOptions) error {
 		if err != nil {
 			return err
 		}
-		logger.Info("server prepared")
 
 		return preparedServer.Run(ctx)
 	})

@@ -15,13 +15,42 @@
 package validation
 
 import (
+	"fmt"
 	"net"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
-func IsValidAddress(addr string) []string {
+func IsUnixSocketURI(uri string) []string {
+	const prefix = "unix://"
+	var errs []string
+
+	if !strings.HasPrefix(uri, prefix) {
+		errs = append(errs, fmt.Sprintf("must start with %q", prefix))
+		return errs
+	}
+
+	path := strings.TrimPrefix(uri, prefix)
+	if path == "" {
+		errs = append(errs, "path is required")
+		return errs
+	}
+
+	if !filepath.IsAbs(path) {
+		errs = append(errs, fmt.Sprintf("path %q must be an absolute path", path))
+	}
+
+	if strings.HasSuffix(path, string(filepath.Separator)) {
+		errs = append(errs, fmt.Sprintf("path %q must not end with a trailing slash", path))
+	}
+
+	return errs
+}
+
+func IsTCPAddress(addr string) []string {
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
 		return []string{err.Error()}
@@ -30,13 +59,13 @@ func IsValidAddress(addr string) []string {
 	var errs []string
 	if host != "" && host != "localhost" {
 		if ip := net.ParseIP(host); ip == nil {
-			errs = append(errs, "invalid textual representation of an IP address")
+			errs = append(errs, fmt.Sprintf("invalid IP or hostname: %q", host))
 		}
 	}
 
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		errs = append(errs, err.Error())
+		errs = append(errs, fmt.Sprintf("invalid port: %q", portStr))
 	} else {
 		errs = append(errs, validation.IsValidPortNum(port)...)
 	}

@@ -16,10 +16,15 @@ package storagebackend
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/k3s-io/kine/pkg/endpoint"
+	"github.com/nvidia/nvsentinel/pkg/storage/storagebackend/options"
 )
 
 func TestPrepareFilesystem(t *testing.T) {
@@ -95,4 +100,76 @@ func TestStorageReadyState(t *testing.T) {
 	default:
 		t.Error("Ready() channel did not fire")
 	}
+}
+
+func TestRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "state.db")
+	socketPath := filepath.Join(tmpDir, "kine.sock")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	opts := options.NewOptions()
+	opts.DatabaseDir = tmpDir
+	opts.KineSocketPath = socketPath
+	opts.KineConfig = endpoint.Config{
+		Listener: "unix://" + socketPath,
+		Endpoint: fmt.Sprintf("sqlite://%s?_journal=WAL", dbPath),
+	}
+
+	completedOpts, _ := opts.Complete()
+	config, err := NewConfig(ctx, completedOpts)
+	if err != nil {
+		t.Fatalf("failed to create config: %v", err)
+	}
+
+	completedCfg, err := config.Complete()
+	if err != nil {
+		t.Fatalf("failed to complete config: %v", err)
+	}
+
+	sm, err := completedCfg.New()
+	if err != nil {
+		t.Fatalf("failed to create storage manager: %v", err)
+	}
+
+	if err := sm.prepareFilesystem(ctx); err != nil {
+		t.Fatalf("failed to prepare filesystem: %v", err)
+	}
+
+	t.Run("RunAndCleanup", func(t *testing.T) {
+		runCtx, runCancel := context.WithCancel(ctx)
+
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- sm.run(runCtx)
+		}()
+
+		select {
+		case <-sm.Ready():
+			if _, err := os.Stat(socketPath); err != nil {
+				t.Errorf("socket file should exist while running: %v", err)
+			}
+		case err := <-errCh:
+			t.Fatalf("StorageManager exited prematurely: %v", err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("StorageManager timed out waiting to become ready")
+		}
+
+		runCancel()
+
+		select {
+		case err := <-errCh:
+			if err != nil && err != context.Canceled {
+				t.Errorf("storage exited with unexpected error: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Error("StorageManager failed to shut down within grace period")
+		}
+
+		if _, err := os.Stat(socketPath); !os.IsNotExist(err) {
+			t.Errorf("socket file %q was not removed after shutdown", socketPath)
+		}
+	})
 }

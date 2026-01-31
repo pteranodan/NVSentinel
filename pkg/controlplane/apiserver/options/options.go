@@ -41,6 +41,21 @@ type Options struct {
 	Logs    *logs.Options
 }
 
+type completedOptions struct {
+	NodeName            string
+	HealthAddress       string
+	MetricsAddress      string
+	ShutdownGracePeriod time.Duration
+
+	GRPC    grpc.CompletedOptions
+	Storage storagebackend.CompletedOptions
+	Logs    *logs.Options
+}
+
+type CompletedOptions struct {
+	*completedOptions
+}
+
 func NewOptions() *Options {
 	return &Options{
 		ShutdownGracePeriod: 25 * time.Second,
@@ -56,17 +71,25 @@ func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 	}
 
 	genericFs := fss.FlagSet("generic")
-	genericFs.StringVar(&o.NodeName, "hostname-override", o.NodeName,
-		"If non-empty, will use this string as identification instead of the actual hostname.")
-	genericFs.StringVar(&o.HealthAddress, "health-probe-bind-address", o.HealthAddress,
-		"The TCP address to serve gRPC health and reflection.")
-	genericFs.StringVar(&o.MetricsAddress, "metrics-bind-address", o.MetricsAddress,
-		"The TCP address to server HTTP metrics.")
-	genericFs.DurationVar(&o.ShutdownGracePeriod, "shutdown-grace-period", o.ShutdownGracePeriod,
-		"The maximum duration to wait for the server to shut down gracefully before forcing a stop.")
 
-	o.GRPC.AddFlags(fss.FlagSet("grpc"))
-	o.Storage.AddFlags(fss.FlagSet("storage"))
+	genericFs.StringVar(&o.NodeName, "hostname-override", o.NodeName,
+		"If non-empty, will use this string as identification instead of the actual hostname. "+
+			"Must be a valid DNS subdomain.")
+
+	genericFs.StringVar(&o.HealthAddress, "health-probe-bind-address", o.HealthAddress,
+		"The TCP address (IP:port) to serve gRPC health and reflection. "+
+			"If empty, defaults to :50051.")
+
+	genericFs.StringVar(&o.MetricsAddress, "metrics-bind-address", o.MetricsAddress,
+		"The TCP address (IP:port) to serve HTTP metrics. "+
+			"If empty, defaults to :9090.")
+
+	genericFs.DurationVar(&o.ShutdownGracePeriod, "shutdown-grace-period", o.ShutdownGracePeriod,
+		"The maximum duration to wait for the server to shut down gracefully before forcing a stop. "+
+			"Must be between 0s and 10m.")
+
+	o.GRPC.AddFlags(fss)
+	o.Storage.AddFlags(fss)
 	logsapi.AddFlags(o.Logs, fss.FlagSet("logs"))
 }
 
@@ -141,7 +164,7 @@ func (o *CompletedOptions) Validate() []error {
 	if o.HealthAddress == "" {
 		allErrors = append(allErrors, fmt.Errorf("health-probe-bind-address: required"))
 	} else {
-		if validationErrors := nvvalidation.IsValidAddress(o.HealthAddress); len(validationErrors) > 0 {
+		if validationErrors := nvvalidation.IsTCPAddress(o.HealthAddress); len(validationErrors) > 0 {
 			for _, errDesc := range validationErrors {
 				allErrors = append(allErrors, fmt.Errorf("health-probe-bind-address %q: %s", o.HealthAddress, errDesc))
 			}
@@ -149,7 +172,7 @@ func (o *CompletedOptions) Validate() []error {
 	}
 
 	if o.MetricsAddress != "" {
-		if validationErrors := nvvalidation.IsValidAddress(o.MetricsAddress); len(validationErrors) > 0 {
+		if validationErrors := nvvalidation.IsTCPAddress(o.MetricsAddress); len(validationErrors) > 0 {
 			for _, errDesc := range validationErrors {
 				allErrors = append(allErrors, fmt.Errorf("metrics-bind-address %q: %s", o.MetricsAddress, errDesc))
 			}
@@ -176,19 +199,4 @@ func (o *CompletedOptions) Validate() []error {
 	}
 
 	return allErrors
-}
-
-type completedOptions struct {
-	NodeName            string
-	HealthAddress       string
-	MetricsAddress      string
-	ShutdownGracePeriod time.Duration
-
-	GRPC    grpc.CompletedOptions
-	Storage storagebackend.CompletedOptions
-	Logs    *logs.Options
-}
-
-type CompletedOptions struct {
-	*completedOptions
 }

@@ -14,7 +14,7 @@ NVIDIA provides a [client library](./pkg/client-go) for those looking to write a
 import (
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "github.com/nvidia/nvsentinel/pkg/client-go/clientset/versioned"
-    "github.com/nvidia/nvsentinel/pkg/client-go/nvgrpc"
+	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 )
 
 func main() {

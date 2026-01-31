@@ -97,19 +97,32 @@ func (s *preparedStorage) Run(ctx context.Context) error {
 }
 
 func (s *StorageManager) run(ctx context.Context) error {
-	klog.InfoS("Starting Kine storage endpoint")
+	socketPath := strings.TrimPrefix(s.KineSocketPath, "unix://")
+
+	klog.V(2).InfoS("Starting Kine storage endpoint")
 	etcdConfig, err := endpoint.Listen(ctx, s.KineConfig)
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage backend: %w", err)
 	}
 	s.ETCDConfig = &etcdConfig
 
+	defer s.cleanupSocket(socketPath)
+
 	if err := s.waitForSocket(ctx); err != nil {
 		return err
 	}
 	close(s.readyChan)
 
+	<-ctx.Done()
+	klog.V(2).InfoS("Storage backend shutting down")
+
 	return nil
+}
+
+func (s *StorageManager) cleanupSocket(path string) {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		klog.ErrorS(err, "Failed to remove socket file during shutdown", "path", path)
+	}
 }
 
 func (s *StorageManager) waitForSocket(ctx context.Context) error {

@@ -48,8 +48,19 @@ func GetFreeTCPAddress(t *testing.T) string {
 	return addr
 }
 
-// WaitForRunning blocks until a gRPC health check returns successfully or the timeout is reached.
-func WaitForRunning(t *testing.T, addr string, timeout time.Duration) {
+type HealthCondition func(resp *healthpb.HealthCheckResponse) bool
+
+var (
+	IsServing = func(r *healthpb.HealthCheckResponse) bool {
+		return r.Status == healthpb.HealthCheckResponse_SERVING
+	}
+
+	IsNotServing = func(r *healthpb.HealthCheckResponse) bool {
+		return r.Status == healthpb.HealthCheckResponse_NOT_SERVING
+	}
+)
+
+func WaitForStatus(t *testing.T, addr string, serviceName string, timeout time.Duration, condition HealthCondition) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -57,25 +68,30 @@ func WaitForRunning(t *testing.T, addr string, timeout time.Duration) {
 
 	// Bypass gRPC's internal DNS resolver for IP:Port strings
 	dialTarget := fmt.Sprintf("passthrough:///%s", addr)
-	conn, err := grpc.DialContext(ctx, dialTarget,
+
+	conn, err := grpc.NewClient(dialTarget,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
-		t.Fatalf("Failed to dial %s: %v", addr, err)
+		t.Fatalf("Failed to create client for %s: %v", addr, err)
 	}
 	defer conn.Close()
 
 	client := healthpb.NewHealthClient(conn)
+
 	err = wait.PollUntilContextTimeout(ctx, 200*time.Millisecond, timeout, true, func(ctx context.Context) (bool, error) {
-		resp, err := client.Check(ctx, &healthpb.HealthCheckRequest{Service: ""})
+		callCtx, callCancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		defer callCancel()
+
+		resp, err := client.Check(callCtx, &healthpb.HealthCheckRequest{Service: serviceName})
 		if err != nil {
 			return false, nil
 		}
-		return resp.GetStatus() == healthpb.HealthCheckResponse_SERVING, nil
+
+		return condition(resp), nil
 	})
 
 	if err != nil {
-		t.Fatalf("Server never reached SERVING status on %s: %v", addr, err)
+		t.Fatalf("Condition for %s not met on %s within %v: %v", serviceName, addr, timeout, err)
 	}
 }

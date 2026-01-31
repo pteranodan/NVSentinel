@@ -18,7 +18,7 @@ import (
 	"testing"
 )
 
-func TestIsValidAddress(t *testing.T) {
+func TestIsTCPAddress(t *testing.T) {
 	tests := []struct {
 		name    string
 		addr    string
@@ -37,9 +37,33 @@ func TestIsValidAddress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errs := IsValidAddress(tt.addr)
+			errs := IsTCPAddress(tt.addr)
 			if (len(errs) > 0) != tt.wantErr {
-				t.Errorf("IsValidAddress(%s) errors = %v, wantErr %v", tt.addr, errs, tt.wantErr)
+				t.Errorf("IsTCPAddress(%s) errors = %v, wantErr %v", tt.addr, errs, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestIsUnixSocketURI(t *testing.T) {
+	tests := []struct {
+		name    string
+		uri     string
+		wantErr bool
+	}{
+		{"Valid absolute path", "unix:///var/run/test.sock", false},
+		{"Missing prefix", "/var/run/test.sock", true},
+		{"Relative path", "unix://var/run/test.sock", true},
+		{"Trailing slash", "unix:///var/run/test/", true},
+		{"Empty path", "unix://", true},
+		{"Wrong scheme", "http:///var/run/test.sock", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := IsUnixSocketURI(tt.uri)
+			if (len(errs) > 0) != tt.wantErr {
+				t.Errorf("IsUnixSocketURI(%s) errors = %v, wantErr %v", tt.uri, errs, tt.wantErr)
 			}
 		})
 	}

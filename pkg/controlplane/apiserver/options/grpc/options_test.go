@@ -21,15 +21,16 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
+	cliflag "k8s.io/component-base/cli/flag"
 )
 
 func TestAddFlags(t *testing.T) {
-	fs := pflag.NewFlagSet("test", pflag.PanicOnError)
 	o := NewOptions()
-	o.AddFlags(fs)
+	fss := &cliflag.NamedFlagSets{}
+	o.AddFlags(fss)
 
+	fs := fss.FlagSet("grpc")
 	args := []string{
 		"--bind-address=unix:///tmp/test.sock",
 		"--max-streams-per-connection=500",
@@ -57,7 +58,40 @@ func TestAddFlags(t *testing.T) {
 	}
 }
 
-func TestCompleteAndValidate(t *testing.T) {
+func TestComplete(t *testing.T) {
+	t.Run("Default assignments", func(t *testing.T) {
+		o := &Options{}
+		completed, err := o.Complete()
+		if err != nil {
+			t.Fatalf("Complete failed: %v", err)
+		}
+
+		if completed.BindAddress != "unix:///var/run/nvidia-device-api/device-api.sock" {
+			t.Errorf("expected default bind-address, got %s", completed.BindAddress)
+		}
+		if completed.MaxConcurrentStreams != 250 {
+			t.Errorf("expected default streams 250, got %d", completed.MaxConcurrentStreams)
+		}
+		if completed.MaxRecvMsgSize != 4194304 {
+			t.Errorf("expected default recv size 4MiB, got %d", completed.MaxRecvMsgSize)
+		}
+		if !completed.PermitWithoutStream {
+			t.Error("PermitWithoutStream should be forced to true")
+		}
+	})
+
+	t.Run("Preserve user overrides", func(t *testing.T) {
+		o := NewOptions()
+		o.MaxConcurrentStreams = 500
+
+		completed, _ := o.Complete()
+		if completed.MaxConcurrentStreams != 500 {
+			t.Errorf("User override was lost: got %d", completed.MaxConcurrentStreams)
+		}
+	})
+}
+
+func TestValidate(t *testing.T) {
 	tests := []struct {
 		name        string
 		modify      func(*Options)
@@ -75,32 +109,32 @@ func TestCompleteAndValidate(t *testing.T) {
 				o.BindAddress = "tcp://127.0.0.1:8080"
 			},
 			wantErr:     true,
-			errContains: "bind-address \"tcp://127.0.0.1:8080\": must start with 'unix://'",
-		},
-		{
-			name: "Trailing slash in socket path",
-			modify: func(o *Options) {
-				o.BindAddress = "unix:///var/run/test/"
-			},
-			wantErr:     true,
-			errContains: "bind-address path \"/var/run/test/\": must not end with a trailing slash",
+			errContains: "must start with \"unix://\"",
 		},
 		{
 			name: "Keepalive Timeout too high",
 			modify: func(o *Options) {
-				o.KeepAliveTime = 10 * time.Second
-				o.KeepAliveTimeout = 20 * time.Second
+				o.KeepAliveTime = 30 * time.Second
+				o.KeepAliveTimeout = 40 * time.Second
 			},
 			wantErr:     true,
-			errContains: "grpc-keepalive-timeout: 20s must be less than grpc-keepalive-time (10s)",
+			errContains: "must be less than grpc-keepalive-time",
 		},
 		{
-			name: "Exceed MaxRecvMsgSize",
+			name: "MaxRecvMsgSize too low",
 			modify: func(o *Options) {
-				o.MaxRecvMsgSize = 10 * 1024 * 1024 // 10MiB
+				o.MaxRecvMsgSize = 512
 			},
 			wantErr:     true,
-			errContains: "max-recv-msg-size: 10485760 must be 4MiB or less",
+			errContains: "must be between 1024 and 4194304",
+		},
+		{
+			name: "MaxRecvMsgSize too high",
+			modify: func(o *Options) {
+				o.MaxRecvMsgSize = 10 * 1024 * 1024
+			},
+			wantErr:     true,
+			errContains: "must be between 1024 and 4194304",
 		},
 		{
 			name: "Min Ping Interval violation",
@@ -108,7 +142,15 @@ func TestCompleteAndValidate(t *testing.T) {
 				o.MinPingInterval = 1 * time.Second
 			},
 			wantErr:     true,
-			errContains: "min-ping-interval: 1s must be at least 5s",
+			errContains: "must be at least 5s",
+		},
+		{
+			name: "Keepalive Time too aggressive",
+			modify: func(o *Options) {
+				o.KeepAliveTime = 5 * time.Second
+			},
+			wantErr:     true,
+			errContains: "must be 10s or greater",
 		},
 	}
 
@@ -119,8 +161,9 @@ func TestCompleteAndValidate(t *testing.T) {
 
 			completed, err := o.Complete()
 			if err != nil {
-				t.Fatalf("Complete failed: %v", err)
+				t.Fatalf("Complete failed during setup: %v", err)
 			}
+
 			errs := completed.Validate()
 
 			if (len(errs) > 0) != tt.wantErr {

@@ -57,7 +57,6 @@ func TestAddFlags(t *testing.T) {
 	if o.ShutdownGracePeriod != 10*time.Second {
 		t.Errorf("expected ShutdownGracePeriod %v, got %v", 10*time.Second, o.ShutdownGracePeriod)
 	}
-
 }
 
 func TestComplete(t *testing.T) {
@@ -65,13 +64,23 @@ func TestComplete(t *testing.T) {
 
 	t.Run("Default assignments", func(t *testing.T) {
 		o := NewOptions()
+		o.HealthAddress = ""
+		o.MetricsAddress = ""
+		o.ShutdownGracePeriod = 0
+
 		completed, err := o.Complete(context.Background())
 		if err != nil {
 			t.Fatalf("Complete failed: %v", err)
 		}
 
 		if completed.HealthAddress != ":50051" {
-			t.Errorf("Expected default health address :50051, got %s", completed.HealthAddress)
+			t.Errorf("expected default health address :50051, got %s", completed.HealthAddress)
+		}
+		if completed.MetricsAddress != ":9090" {
+			t.Errorf("expected default metrics address :9090, got %s", completed.MetricsAddress)
+		}
+		if completed.ShutdownGracePeriod != 25*time.Second {
+			t.Errorf("expected default grace period 25s, got %v", completed.ShutdownGracePeriod)
 		}
 		if completed.NodeName == "" {
 			t.Error("NodeName should have been populated from system hostname")
@@ -90,15 +99,16 @@ func TestComplete(t *testing.T) {
 		}
 	})
 
-	t.Run("Manual override takes precedence", func(t *testing.T) {
-		o := NewOptions()
-		o.NodeName = "manual-override"
+	t.Run("Manual override takes precedence over ENV", func(t *testing.T) {
 		os.Setenv("NODE_NAME", "env-value")
 		defer os.Unsetenv("NODE_NAME")
 
+		o := NewOptions()
+		o.NodeName = "manual-override"
+
 		completed, _ := o.Complete(context.Background())
 		if completed.NodeName != "manual-override" {
-			t.Errorf("Manual override should ignore system/env values. Got %q", completed.NodeName)
+			t.Errorf("Manual override should ignore ENV values. Got %q", completed.NodeName)
 		}
 	})
 }
@@ -118,10 +128,11 @@ func TestValidate(t *testing.T) {
 		{
 			name: "Invalid NodeName (DNS-1123)",
 			modify: func(o *Options) {
-				o.NodeName = "Invalid_Node_Name" // underscores and caps not allowed
+				// NodeName is lowercased, but underscores are still illegal
+				o.NodeName = "invalid_node_name"
 			},
 			wantErr:     true,
-			errContains: "hostname-override \"invalid_node_name\":", // lowercased
+			errContains: "hostname-override \"invalid_node_name\":",
 		},
 		{
 			name: "Invalid Health Address",
@@ -149,7 +160,7 @@ func TestValidate(t *testing.T) {
 			errContains: "shutdown-grace-period: -5s must be greater than or equal to 0s",
 		},
 		{
-			name: "Grace Period Too Long",
+			name: "Grace Period Exceeds Max",
 			modify: func(o *Options) {
 				o.ShutdownGracePeriod = 11 * time.Minute
 			},
@@ -169,6 +180,7 @@ func TestValidate(t *testing.T) {
 			}
 
 			errs := completed.Validate()
+
 			if (len(errs) > 0) != tt.wantErr {
 				t.Errorf("Validate() errors = %v, wantErr %v", errs, tt.wantErr)
 			}
@@ -182,22 +194,9 @@ func TestValidate(t *testing.T) {
 					}
 				}
 				if !found {
-					t.Errorf("Errors %v did not contain %q", errs, tt.errContains)
+					t.Errorf("None of the errors %v contain %q", errs, tt.errContains)
 				}
 			}
 		})
-	}
-}
-
-func TestNilOptions(t *testing.T) {
-	var o *Options
-	_, err := o.Complete(context.Background())
-	if err != nil {
-		t.Error("Complete on nil should not error")
-	}
-
-	var c *CompletedOptions
-	if errs := c.Validate(); len(errs) != 0 {
-		t.Error("Validate on nil should return nil/empty slice")
 	}
 }

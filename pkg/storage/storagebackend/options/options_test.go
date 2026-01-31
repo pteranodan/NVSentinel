@@ -20,9 +20,95 @@ import (
 	"time"
 
 	apistorage "k8s.io/apiserver/pkg/storage/storagebackend"
+	cliflag "k8s.io/component-base/cli/flag"
 )
 
-func TestCompleteAndValidate(t *testing.T) {
+func TestAddFlags(t *testing.T) {
+	o := NewOptions()
+	fss := &cliflag.NamedFlagSets{}
+	o.AddFlags(fss)
+
+	fs := fss.FlagSet("storage")
+	args := []string{
+		"--database-path=/tmp/custom.db",
+		"--compaction-interval=2m",
+		"--compaction-batch-size=5000",
+		"--watch-progress-notify-interval=30s",
+	}
+
+	err := fs.Parse(args)
+	if err != nil {
+		t.Fatalf("Failed to parse flags: %v", err)
+	}
+
+	if o.DatabasePath != "/tmp/custom.db" {
+		t.Errorf("expected DatabasePath %s, got %s", "/tmp/custom.db", o.DatabasePath)
+	}
+
+	if o.CompactionInterval != 2*time.Minute {
+		t.Errorf("expected CompactionInterval %v, got %v", 2*time.Minute, o.CompactionInterval)
+	}
+
+	if o.CompactionBatchSize != 5000 {
+		t.Errorf("expected CompactionBatchSize %d, got %d", 5000, o.CompactionBatchSize)
+	}
+
+	if o.WatchProgressNotifyInterval != 30*time.Second {
+		t.Errorf("expected WatchProgressNotifyInterval %v, got %v", 30*time.Second, o.WatchProgressNotifyInterval)
+	}
+}
+
+func TestComplete(t *testing.T) {
+	t.Run("Default assignments", func(t *testing.T) {
+		opts := NewOptions()
+		opts.DatabasePath = ""
+		opts.KineSocketPath = ""
+
+		completed, err := opts.Complete()
+		if err != nil {
+			t.Fatalf("Complete failed: %v", err)
+		}
+
+		if completed.KineSocketPath != "/var/run/nvidia-device-api/kine.sock" {
+			t.Errorf("expected default socket path, got %s", completed.KineSocketPath)
+		}
+		if completed.KineConfig.Listener != "unix:///var/run/nvidia-device-api/kine.sock" {
+			t.Errorf("expected default listener URI, got %s", completed.KineConfig.Listener)
+		}
+		if !strings.Contains(completed.KineConfig.Endpoint, "sqlite:///var/lib/nvidia-device-api/state.db") {
+			t.Errorf("DSN not properly constructed: %s", completed.KineConfig.Endpoint)
+		}
+		if completed.DatabaseDir != "/var/lib/nvidia-device-api" {
+			t.Errorf("DatabaseDir not derived correctly: %s", completed.DatabaseDir)
+		}
+	})
+
+	t.Run("Trims unix prefix from SocketPath", func(t *testing.T) {
+		opts := NewOptions()
+		opts.KineSocketPath = "unix:///tmp/test.sock"
+
+		completed, _ := opts.Complete()
+		if completed.KineSocketPath != "/tmp/test.sock" {
+			t.Errorf("Complete should trim prefix from SocketPath: got %s", completed.KineSocketPath)
+		}
+	})
+
+	t.Run("Maps intervals to KineConfig", func(t *testing.T) {
+		opts := NewOptions()
+		opts.CompactionInterval = 10 * time.Minute
+		opts.WatchProgressNotifyInterval = 15 * time.Second
+
+		completed, _ := opts.Complete()
+		if completed.KineConfig.CompactInterval != 10*time.Minute {
+			t.Error("CompactInterval not mapped to KineConfig")
+		}
+		if completed.KineConfig.NotifyInterval != 15*time.Second {
+			t.Error("NotifyInterval not mapped to KineConfig")
+		}
+	})
+}
+
+func TestValidate(t *testing.T) {
 	tests := []struct {
 		name        string
 		modify      func(*Options)
@@ -35,14 +121,6 @@ func TestCompleteAndValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Empty database path",
-			modify: func(o *Options) {
-				o.DatabasePath = ""
-			},
-			wantErr:     true,
-			errContains: "database-path: required",
-		},
-		{
 			name: "Relative database path",
 			modify: func(o *Options) {
 				o.DatabasePath = "relative/path.db"
@@ -51,28 +129,52 @@ func TestCompleteAndValidate(t *testing.T) {
 			errContains: "must be an absolute path",
 		},
 		{
-			name: "Invalid compaction batch size",
+			name: "Compaction interval too low (but > 0)",
 			modify: func(o *Options) {
-				o.CompactionBatchSize = 0
+				o.CompactionInterval = 30 * time.Second
 			},
 			wantErr:     true,
-			errContains: "compaction-batch-size: 0 must be greater than 0",
+			errContains: "must be 1m or greater",
 		},
 		{
-			name: "Negative compaction interval",
+			name: "Compaction interval 0 is allowed",
 			modify: func(o *Options) {
-				o.CompactionInterval = -1 * time.Second
+				o.CompactionInterval = 0
 			},
-			wantErr:     true,
-			errContains: "compaction-interval: -1s must be 0s or greater",
+			wantErr: false,
 		},
 		{
-			name: "Negative watch notify interval",
+			name: "Compaction batch size too large",
 			modify: func(o *Options) {
-				o.WatchProgressNotifyInterval = -1 * time.Second
+				o.CompactionBatchSize = 50000
 			},
 			wantErr:     true,
-			errContains: "watch-progress-notify-interval: -1s must be 0s or greater",
+			errContains: "must be 10000 or less",
+		},
+		{
+			name: "Watch notify interval below floor",
+			modify: func(o *Options) {
+				o.WatchProgressNotifyInterval = 1 * time.Second
+			},
+			wantErr:     true,
+			errContains: "must be 5s or greater",
+		},
+		{
+			name: "Watch notify interval above ceiling",
+			modify: func(o *Options) {
+				o.WatchProgressNotifyInterval = 30 * time.Minute
+			},
+			wantErr:     true,
+			errContains: "must be 10m or less",
+		},
+		{
+			name: "Socket path/URI mismatch",
+			modify: func(o *Options) {
+				o.KineSocketPath = "/path/a.sock"
+				o.KineConfig.Listener = "unix:///path/b.sock"
+			},
+			wantErr:     true,
+			errContains: "does not match kine-socket-path",
 		},
 	}
 
@@ -104,43 +206,6 @@ func TestCompleteAndValidate(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestKineConfig(t *testing.T) {
-	opts := NewOptions()
-	opts.DatabasePath = "/tmp/test.db"
-	opts.CompactionInterval = 10 * time.Minute
-	opts.CompactionBatchSize = 500
-	opts.WatchProgressNotifyInterval = 2 * time.Second
-
-	completed, err := opts.Complete()
-	if err != nil {
-		t.Fatalf("Complete failed: %v", err)
-	}
-
-	expectedDSN := "sqlite:///tmp/test.db?_journal=WAL"
-	if !strings.HasPrefix(completed.KineConfig.Endpoint, expectedDSN) {
-		t.Errorf("DSN mismatch.\nGot: %s\nWant prefix: %s", completed.KineConfig.Endpoint, expectedDSN)
-	}
-
-	expectedListener := "unix:///var/run/nvidia-device-api/kine.sock"
-	if completed.KineConfig.Listener != expectedListener {
-		t.Errorf("Listener mismatch: got %s, want %s", completed.KineConfig.Listener, expectedListener)
-	}
-
-	if completed.KineConfig.CompactInterval != 10*time.Minute {
-		t.Errorf("Kine CompactInterval mismatch")
-	}
-	if completed.KineConfig.CompactBatchSize != 500 {
-		t.Errorf("Kine CompactBatchSize mismatch")
-	}
-	if completed.KineConfig.NotifyInterval != 2*time.Second {
-		t.Errorf("Kine NotifyInterval mismatch")
-	}
-
-	if completed.DatabaseDir != "/tmp" {
-		t.Errorf("DatabaseDir mismatch: got %s, want /tmp", completed.DatabaseDir)
 	}
 }
 

@@ -16,13 +16,12 @@ package grpc
 
 import (
 	"fmt"
-	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/spf13/pflag"
+	nvvalidation "github.com/nvidia/nvsentinel/pkg/util/validation"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
+	cliflag "k8s.io/component-base/cli/flag"
 )
 
 type Options struct {
@@ -60,23 +59,33 @@ func NewOptions() *Options {
 }
 
 // AddFlags adds flags related to gRPC for a specific APIServer to the specified FlagSet
-func (o *Options) AddFlags(fs *pflag.FlagSet) {
+func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 	if o == nil {
 		return
 	}
 
-	fs.StringVar(&o.BindAddress, "bind-address", o.BindAddress,
-		"The address on which to listen for gRPC requests.")
-	fs.Uint32Var(&o.MaxConcurrentStreams, "max-streams-per-connection", o.MaxConcurrentStreams,
-		"The maximum number of concurrent streams allowed per connection.")
-	fs.IntVar(&o.MaxRecvMsgSize, "max-recv-msg-size", o.MaxRecvMsgSize,
-		"The maximum message size in bytes the server can receive.")
-	fs.IntVar(&o.MaxSendMsgSize, "max-send-msg-size", o.MaxSendMsgSize,
-		"The maximum message size in bytes the server can send.")
-	fs.DurationVar(&o.KeepAliveTime, "grpc-keepalive-time", o.KeepAliveTime,
-		"Duration after which a keepalive probe is sent.")
-	fs.DurationVar(&o.KeepAliveTimeout, "grpc-keepalive-timeout", o.KeepAliveTimeout,
-		"Duration the server waits for a keepalive response.")
+	grpcFs := fss.FlagSet("grpc")
+
+	grpcFs.StringVar(&o.BindAddress, "bind-address", o.BindAddress,
+		"The unix socket address on which to listen for gRPC requests. "+
+			"Must be a unix:// absolute path.")
+
+	grpcFs.Uint32Var(&o.MaxConcurrentStreams, "max-streams-per-connection", o.MaxConcurrentStreams,
+		"The maximum number of concurrent streams allowed per connection. "+
+			"Must be between 1 and 10000.")
+	grpcFs.IntVar(&o.MaxRecvMsgSize, "max-recv-msg-size", o.MaxRecvMsgSize,
+		"The maximum message size in bytes the server can receive. "+
+			"Must be between 1KiB and 4MiB.")
+	grpcFs.IntVar(&o.MaxSendMsgSize, "max-send-msg-size", o.MaxSendMsgSize,
+		"The maximum message size in bytes the server can send. "+
+			"Must be between 1KiB and 16MiB.")
+
+	grpcFs.DurationVar(&o.KeepAliveTime, "grpc-keepalive-time", o.KeepAliveTime,
+		"Duration after which a keepalive probe is sent. "+
+			"Must be at least 10s.")
+	grpcFs.DurationVar(&o.KeepAliveTimeout, "grpc-keepalive-timeout", o.KeepAliveTimeout,
+		"Duration the server waits for a keepalive response. "+
+			"Must be between 1s and 5m.")
 }
 
 func (o *Options) Complete() (CompletedOptions, error) {
@@ -134,42 +143,38 @@ func (o *Options) Validate() []error {
 
 	allErrors := []error{}
 
-	if !strings.HasPrefix(o.BindAddress, "unix://") {
-		allErrors = append(allErrors, fmt.Errorf("bind-address %q: must start with 'unix://'", o.BindAddress))
-		return allErrors
-	}
-	path := strings.TrimPrefix(o.BindAddress, "unix://")
-	if !filepath.IsAbs(path) {
-		allErrors = append(allErrors, fmt.Errorf("bind-address path %q: must be an absolute path", path))
-	}
-	if strings.HasSuffix(path, string(filepath.Separator)) {
-		allErrors = append(allErrors, fmt.Errorf("bind-address path %q: must not end with a trailing slash", path))
+	if o.BindAddress == "" {
+		allErrors = append(allErrors, fmt.Errorf("bind-address: required"))
+	} else {
+		if validationErrors := nvvalidation.IsUnixSocketURI(o.BindAddress); len(validationErrors) > 0 {
+			for _, errDesc := range validationErrors {
+				allErrors = append(allErrors, fmt.Errorf("bind-address %q: %s", o.BindAddress, errDesc))
+			}
+		}
 	}
 
-	if o.MaxConcurrentStreams > 10000 {
-		allErrors = append(allErrors, fmt.Errorf("max-streams-per-connection: %d must be 10000 or less", o.MaxConcurrentStreams))
+	if o.MaxConcurrentStreams < 1 || o.MaxConcurrentStreams > 10000 {
+		allErrors = append(allErrors, fmt.Errorf("max-streams-per-connection: %d must be between 1 and 10000", o.MaxConcurrentStreams))
 	}
-	if o.MaxRecvMsgSize > 4194304 {
-		allErrors = append(allErrors, fmt.Errorf("max-recv-msg-size: %d must be 4MiB or less", o.MaxRecvMsgSize))
+	if o.MaxRecvMsgSize < 1024 || o.MaxRecvMsgSize > 4194304 {
+		allErrors = append(allErrors, fmt.Errorf("max-recv-msg-size: %d must be between 1024 and 4194304 (4MiB)", o.MaxRecvMsgSize))
 	}
-	if o.MaxSendMsgSize > 16777216 {
-		allErrors = append(allErrors, fmt.Errorf("max-send-msg-size: %d must be 16MiB or less", o.MaxSendMsgSize))
+	if o.MaxSendMsgSize < 1024 || o.MaxSendMsgSize > 16777216 {
+		allErrors = append(allErrors, fmt.Errorf("max-send-msg-size: %d must be between 1024 and 16777216 (16MiB)", o.MaxSendMsgSize))
 	}
 
-	if o.KeepAliveTime < 0 {
-		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-time: %v must be 0s or greater", o.KeepAliveTime))
+	if o.KeepAliveTime < 10*time.Second {
+		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-time: %v must be 10s or greater", o.KeepAliveTime))
 	}
-	if o.KeepAliveTimeout < 0 {
-		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-timeout: %v must be 0s or greater", o.KeepAliveTimeout))
+	if o.KeepAliveTimeout < 1*time.Second || o.KeepAliveTimeout > 5*time.Minute {
+		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-timeout: %v must be between 1s and 5m", o.KeepAliveTimeout))
 	}
-	if o.MinPingInterval < 5*time.Second {
-		allErrors = append(allErrors, fmt.Errorf("min-ping-interval: %v must be at least 5s", o.MinPingInterval))
-	}
-	if o.KeepAliveTimeout >= o.KeepAliveTime && o.KeepAliveTime > 0 {
+	if o.KeepAliveTimeout >= o.KeepAliveTime {
 		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-timeout: %v must be less than grpc-keepalive-time (%v)", o.KeepAliveTimeout, o.KeepAliveTime))
 	}
-	if o.KeepAliveTime < o.MinPingInterval && o.KeepAliveTime > 0 {
-		allErrors = append(allErrors, fmt.Errorf("grpc-keepalive-time: %v must be greater than or equal to min-ping-interval (%v)", o.KeepAliveTime, o.MinPingInterval))
+
+	if o.MinPingInterval < 5*time.Second {
+		allErrors = append(allErrors, fmt.Errorf("min-ping-interval: %v must be at least 5s", o.MinPingInterval))
 	}
 
 	if !o.PermitWithoutStream {

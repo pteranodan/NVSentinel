@@ -21,9 +21,10 @@ import (
 	"time"
 
 	"github.com/k3s-io/kine/pkg/endpoint"
-	"github.com/spf13/pflag"
+	nvvalidation "github.com/nvidia/nvsentinel/pkg/util/validation"
 	"k8s.io/apiserver/pkg/server/options"
 	apistorage "k8s.io/apiserver/pkg/storage/storagebackend"
+	cliflag "k8s.io/component-base/cli/flag"
 )
 
 type Options struct {
@@ -56,19 +57,22 @@ func NewOptions() *Options {
 	}
 }
 
-func (o *Options) AddFlags(fs *pflag.FlagSet) {
+func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 	if o == nil {
 		return
 	}
 
-	fs.StringVar(&o.DatabasePath, "database-path", o.DatabasePath,
-		"The path to the SQLite database file.")
-	fs.DurationVar(&o.CompactionInterval, "compaction-interval", o.CompactionInterval,
-		"The interval of compaction requests. If 0, the compaction request from apiserver is disabled.")
-	fs.Int64Var(&o.CompactionBatchSize, "compaction-batch-size", o.CompactionBatchSize,
-		"Number of revisions to compact in a single batch.")
-	fs.DurationVar(&o.WatchProgressNotifyInterval, "watch-progress-notify-interval", o.WatchProgressNotifyInterval,
-		"Interval between periodic watch progress notifications.")
+	storageFs := fss.FlagSet("storage")
+
+	storageFs.StringVar(&o.DatabasePath, "database-path", o.DatabasePath,
+		"The path to the SQLite database file. Must be an absolute path.")
+
+	storageFs.DurationVar(&o.CompactionInterval, "compaction-interval", o.CompactionInterval,
+		"The interval of compaction requests. If 0, compaction is disabled. If enabled, must be at least 1m.")
+	storageFs.Int64Var(&o.CompactionBatchSize, "compaction-batch-size", o.CompactionBatchSize,
+		"Number of revisions to compact in a single batch. Must be between 1 and 10000.")
+	storageFs.DurationVar(&o.WatchProgressNotifyInterval, "watch-progress-notify-interval", o.WatchProgressNotifyInterval,
+		"Interval between periodic watch progress notifications. Must be between 5s and 10m.")
 }
 
 func (o *Options) Complete() (CompletedOptions, error) {
@@ -79,15 +83,18 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	if o.KineSocketPath == "" {
 		o.KineSocketPath = "/var/run/nvidia-device-api/kine.sock"
 	}
-	if o.KineSocketPath != "" && o.KineConfig.Listener == "" {
+	o.KineSocketPath = strings.TrimPrefix(o.KineSocketPath, "unix://")
+
+	if o.KineConfig.Listener == "" {
 		o.KineConfig.Listener = "unix://" + o.KineSocketPath
 	}
 
-	if o.DatabasePath != "" {
-		o.DatabaseDir = filepath.Dir(o.DatabasePath)
+	if o.DatabasePath == "" {
+		o.DatabasePath = "/var/lib/nvidia-device-api/state.db"
 	}
+	o.DatabaseDir = filepath.Dir(o.DatabasePath)
 
-	if o.KineConfig.Endpoint == "" && o.DatabasePath != "" {
+	if o.KineConfig.Endpoint == "" {
 		o.KineConfig.Endpoint = fmt.Sprintf("sqlite://%s?_journal=WAL&_timeout=5000&_synchronous=NORMAL&_fk=1", o.DatabasePath)
 	}
 
@@ -125,21 +132,6 @@ func (o *Options) Validate() []error {
 		allErrors = append(allErrors, fmt.Errorf("database directory: not initialized"))
 	}
 
-	if o.CompactionInterval < 0 {
-		allErrors = append(allErrors, fmt.Errorf("compaction-interval: %v must be 0s or greater", o.CompactionInterval))
-	}
-	if o.CompactionBatchSize <= 0 {
-		allErrors = append(allErrors, fmt.Errorf("compaction-batch-size: %v must be greater than 0", o.CompactionBatchSize))
-	}
-
-	if o.WatchProgressNotifyInterval < 0 {
-		allErrors = append(allErrors, fmt.Errorf("watch-progress-notify-interval: %v must be 0s or greater", o.WatchProgressNotifyInterval))
-	}
-
-	if o.Etcd != nil {
-		allErrors = append(allErrors, o.Etcd.Validate()...)
-	}
-
 	if o.KineSocketPath == "" {
 		allErrors = append(allErrors, fmt.Errorf("kine-socket-path: not initialized"))
 	} else if !filepath.IsAbs(o.KineSocketPath) {
@@ -147,17 +139,40 @@ func (o *Options) Validate() []error {
 	}
 
 	if o.KineConfig.Listener == "" {
-		allErrors = append(allErrors, fmt.Errorf("kine-listener: not initialized"))
+		allErrors = append(allErrors, fmt.Errorf("kine-listener: required"))
 	} else {
-		prefix := "unix://"
-		if !strings.HasPrefix(o.KineConfig.Listener, prefix) {
-			allErrors = append(allErrors, fmt.Errorf("kine-listener %q: must start with %q", o.KineConfig.Listener, prefix))
+		if validationErrors := nvvalidation.IsUnixSocketURI(o.KineConfig.Listener); len(validationErrors) > 0 {
+			for _, errDesc := range validationErrors {
+				allErrors = append(allErrors, fmt.Errorf("kine-listener %q: %s", o.KineConfig.Listener, errDesc))
+			}
 		}
 
-		actualPath := strings.TrimPrefix(o.KineConfig.Listener, prefix)
+		actualPath := strings.TrimPrefix(o.KineConfig.Listener, "unix://")
 		if actualPath != o.KineSocketPath {
 			allErrors = append(allErrors, fmt.Errorf("kine-listener path %q: does not match kine-socket-path %q", actualPath, o.KineSocketPath))
 		}
+	}
+
+	if o.CompactionInterval > 0 && o.CompactionInterval < 1*time.Minute {
+		allErrors = append(allErrors, fmt.Errorf("compaction-interval: %v must be 1m or greater (or 0 to disable)", o.CompactionInterval))
+	} else if o.CompactionInterval < 0 {
+		allErrors = append(allErrors, fmt.Errorf("compaction-interval: %v must be 0s or greater", o.CompactionInterval))
+	}
+
+	if o.CompactionBatchSize <= 0 {
+		allErrors = append(allErrors, fmt.Errorf("compaction-batch-size: %v must be greater than 0", o.CompactionBatchSize))
+	} else if o.CompactionBatchSize > 10000 {
+		allErrors = append(allErrors, fmt.Errorf("compaction-batch-size: %v must be 10000 or less", o.CompactionBatchSize))
+	}
+
+	if o.WatchProgressNotifyInterval < 5*time.Second {
+		allErrors = append(allErrors, fmt.Errorf("watch-progress-notify-interval: %v must be 5s or greater", o.WatchProgressNotifyInterval))
+	} else if o.WatchProgressNotifyInterval > 10*time.Minute {
+		allErrors = append(allErrors, fmt.Errorf("watch-progress-notify-interval: %v must be 10m or less", o.WatchProgressNotifyInterval))
+	}
+
+	if o.Etcd != nil {
+		allErrors = append(allErrors, o.Etcd.Validate()...)
 	}
 
 	return allErrors
