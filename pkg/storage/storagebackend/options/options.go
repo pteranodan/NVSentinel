@@ -96,7 +96,7 @@ func (o *Options) Complete() (CompletedOptions, error) {
 
 	if o.KineConfig.Endpoint == "" {
 		o.KineConfig.Endpoint = fmt.Sprintf(
-			"sqlite://%s?_journal=WAL&_timeout=5000&_synchronous=NORMAL&_fk=1",
+			"sqlite://%s?_journal=WAL&_timeout=5000&_sync=NORMAL&_fk=1&_txlock=immediate",
 			o.DatabasePath,
 		)
 	}
