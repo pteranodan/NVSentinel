@@ -78,7 +78,6 @@ func TestGPUFakeClient(t *testing.T) {
 		Spec: devicev1alpha1.GPUSpec{UUID: "GPU-2"},
 	}
 	go func() {
-		time.Sleep(100 * time.Millisecond)
 		client.Tracker().Add(gpu2)
 	}()
 
