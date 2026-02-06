@@ -16,6 +16,7 @@ package options
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -26,6 +27,8 @@ import (
 	apistorage "k8s.io/apiserver/pkg/storage/storagebackend"
 	cliflag "k8s.io/component-base/cli/flag"
 )
+
+const IN_MEMORY = "file::memory:"
 
 type Options struct {
 	DatabasePath                string
@@ -49,7 +52,7 @@ type CompletedOptions struct {
 
 func NewOptions() *Options {
 	return &Options{
-		DatabasePath:                "/var/lib/nvidia-device-api/state.db",
+		DatabasePath:                IN_MEMORY,
 		CompactionInterval:          5 * time.Minute,
 		CompactionBatchSize:         1000,
 		WatchProgressNotifyInterval: 5 * time.Second,
@@ -65,7 +68,8 @@ func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 	storageFs := fss.FlagSet("storage")
 
 	storageFs.StringVar(&o.DatabasePath, "database-path", o.DatabasePath,
-		"The path to the SQLite database file. Must be an absolute path.")
+		"The path to the SQLite database file. Defaults to in-memory (\"file::memory:\"). "+
+			"If using a file, the path must be absolute.")
 
 	storageFs.DurationVar(&o.CompactionInterval, "compaction-interval", o.CompactionInterval,
 		"The interval of compaction requests. If 0, compaction is disabled. If enabled, must be at least 1m.")
@@ -90,20 +94,45 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	}
 
 	if o.DatabasePath == "" {
-		o.DatabasePath = "/var/lib/nvidia-device-api/state.db"
+		o.DatabasePath = IN_MEMORY
 	}
-	o.DatabaseDir = filepath.Dir(o.DatabasePath)
+
+	if o.DatabasePath == IN_MEMORY {
+		o.DatabaseDir = "/tmp"
+
+		v := url.Values{}
+		v.Set("cache", "shared")
+		v.Set("_journal_mode", "WAL")
+		v.Set("_synchronous", "OFF")
+		v.Set("_busy_timeout", "5000")
+		v.Set("_foreign_keys", "ON")
+		v.Set("_temp_store", "MEMORY")
+		v.Set("_cache_size", "-4096")
+		v.Set("_page_size", "16384")
+		v.Set("_txlock", "immediate")
+
+		o.KineConfig.Endpoint = fmt.Sprintf("sqlite://%s?%s", IN_MEMORY, v.Encode())
+	}
+
+	if o.DatabaseDir == "" {
+		o.DatabaseDir = filepath.Dir(o.DatabasePath)
+	}
 
 	if o.KineConfig.Endpoint == "" {
-		o.KineConfig.Endpoint = fmt.Sprintf(
-			"sqlite://%s?_journal=WAL&_timeout=5000&_synchronous=NORMAL&_fk=1",
-			o.DatabasePath,
-		)
+		v := url.Values{}
+		v.Set("_journal_mode", "WAL")
+		v.Set("_busy_timeout", "5000")
+		v.Set("_synchronous", "NORMAL")
+		v.Set("_foreign_keys", "ON")
+		v.Set("_txlock", "immediate")
+
+		o.KineConfig.Endpoint = fmt.Sprintf("sqlite://%s?%s", o.DatabasePath, v.Encode())
 	}
 
 	o.KineConfig.CompactInterval = o.CompactionInterval
 	o.KineConfig.CompactBatchSize = o.CompactionBatchSize
 	o.KineConfig.NotifyInterval = o.WatchProgressNotifyInterval
+	o.KineConfig.ConnectionPoolConfig.MaxOpen = 2
 
 	o.Etcd.StorageConfig.HealthcheckTimeout = 10 * time.Second
 	o.Etcd.StorageConfig.ReadycheckTimeout = 10 * time.Second
@@ -131,7 +160,9 @@ func (o *Options) Validate() []error {
 
 	if o.DatabasePath == "" {
 		allErrors = append(allErrors, fmt.Errorf("database-path: required"))
-	} else if !filepath.IsAbs(o.DatabasePath) {
+	}
+
+	if o.DatabasePath != IN_MEMORY && !filepath.IsAbs(o.DatabasePath) {
 		allErrors = append(allErrors, fmt.Errorf("database-path %q: must be an absolute path", o.DatabasePath))
 	}
 
@@ -191,6 +222,16 @@ func (o *Options) Validate() []error {
 		allErrors = append(allErrors,
 			fmt.Errorf("watch-progress-notify-interval: %v must be 10m or less",
 				o.WatchProgressNotifyInterval))
+	}
+
+	if o.KineConfig.ConnectionPoolConfig.MaxOpen <= 0 {
+		allErrors = append(allErrors,
+			fmt.Errorf("max-open-connections: %v must be greater than 0",
+				o.KineConfig.ConnectionPoolConfig.MaxOpen))
+	} else if o.KineConfig.ConnectionPoolConfig.MaxOpen > 10 {
+		allErrors = append(allErrors,
+			fmt.Errorf("max-open-connections: %v must be 10 or less",
+				o.KineConfig.ConnectionPoolConfig.MaxOpen))
 	}
 
 	if o.Etcd != nil {
