@@ -75,10 +75,13 @@ func TestComplete(t *testing.T) {
 		if completed.KineConfig.Listener != "unix:///var/run/nvidia-device-api/kine.sock" {
 			t.Errorf("expected default listener URI, got %s", completed.KineConfig.Listener)
 		}
-		if !strings.Contains(completed.KineConfig.Endpoint, "sqlite:///var/lib/nvidia-device-api/state.db") {
+		if !strings.Contains(completed.KineConfig.Endpoint, IN_MEMORY) {
 			t.Errorf("DSN not properly constructed: %s", completed.KineConfig.Endpoint)
 		}
-		if completed.DatabaseDir != "/var/lib/nvidia-device-api" {
+		if completed.KineConfig.ConnectionPoolConfig.MaxOpen != 2 {
+			t.Errorf("expected default max open connections, got %d", completed.KineConfig.ConnectionPoolConfig.MaxOpen)
+		}
+		if completed.DatabaseDir != "/tmp" {
 			t.Errorf("DatabaseDir not derived correctly: %s", completed.DatabaseDir)
 		}
 	})
@@ -166,6 +169,22 @@ func TestValidate(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "must be 10m or less",
+		},
+		{
+			name: "Max open connections too low",
+			modify: func(o *Options) {
+				o.KineConfig.ConnectionPoolConfig.MaxOpen = -1
+			},
+			wantErr:     true,
+			errContains: "must be greater than 0",
+		},
+		{
+			name: "Max open connections too high",
+			modify: func(o *Options) {
+				o.KineConfig.ConnectionPoolConfig.MaxOpen = 100
+			},
+			wantErr:     true,
+			errContains: "must be 10 or less",
 		},
 		{
 			name: "Socket path/URI mismatch",

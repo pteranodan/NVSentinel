@@ -64,8 +64,10 @@ func (s *Storage) PrepareRun(ctx context.Context) (preparedStorage, error) {
 }
 
 func (s *Storage) prepareFilesystem(ctx context.Context) error {
-	if err := os.MkdirAll(s.DatabaseDir, 0750); err != nil {
-		return fmt.Errorf("failed to create storage data directory: %w", err)
+	if s.DatabaseDir != "/tmp" {
+		if err := os.MkdirAll(s.DatabaseDir, 0750); err != nil {
+			return fmt.Errorf("failed to create storage data directory: %w", err)
+		}
 	}
 
 	socketPath := strings.TrimPrefix(s.KineSocketPath, "unix://")
