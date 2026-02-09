@@ -25,6 +25,7 @@ VERSION_PKG = github.com/nvidia/nvsentinel/pkg/util/version
 GIT_VERSION := $(shell git describe --tags --always --dirty)
 GIT_COMMIT  := $(shell git rev-parse HEAD)
 BUILD_DATE  := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+DOCKER_IMAGE ?= nvidia-device-apiserver:latest
 
 LDFLAGS := -X $(VERSION_PKG).GitVersion=$(GIT_VERSION) \
            -X $(VERSION_PKG).GitCommit=$(GIT_COMMIT) \
@@ -68,6 +69,14 @@ tidy: ## Run go mod tidy
 .PHONY: build
 build: ## Build the device-apiserver binary.
 	go build -ldflags "$(LDFLAGS)" -o bin/device-apiserver ./cmd/device-apiserver
+
+.PHONY: docker-build
+docker-build: ## Build docker image with build-time metadata.
+	docker build \
+		--build-arg GIT_VERSION=$(GIT_VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(DOCKER_IMAGE) .
 
 .PHONY: test
 test: ## Run unit tests.

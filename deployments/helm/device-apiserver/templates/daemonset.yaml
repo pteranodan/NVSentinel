@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "device-apiserver.fullname" . }}
+  labels:
+    {{- include "device-apiserver.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "device-apiserver.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        {{- include "device-apiserver.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "device-apiserver.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: setup-socket-dir
+          image: busybox:1.36
+          command: 
+            - "sh"
+            - "-c"
+            - "chown {{ .Values.securityContext.runAsUser }}:{{ .Values.securityContext.runAsGroup }} /var/run/nvidia-device-api && chmod 0775 /var/run/nvidia-device-api"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 16Mi
+          securityContext:
+            runAsUser: 0
+            capabilities:
+              add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: run-device-api
+              mountPath: /var/run/nvidia-device-api
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.runAsUser }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup }}
+            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--health-probe-bind-address=:{{ .Values.service.healthPort }}"
+            - "--metrics-bind-address=:{{ .Values.service.metricsPort }}"
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: health
+              containerPort: {{ .Values.service.healthPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: run-device-api
+              mountPath: /var/run/nvidia-device-api
+            - name: tmp-memory
+              mountPath: /tmp
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: run-device-api
+          hostPath:
+            path: /var/run/nvidia-device-api
+            type: DirectoryOrCreate
+        - name: tmp-memory
+          emptyDir:
+            medium: Memory
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

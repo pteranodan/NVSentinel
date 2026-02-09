@@ -31,9 +31,13 @@ func TestAddFlags(t *testing.T) {
 	fs := fss.FlagSet("storage")
 	args := []string{
 		"--database-path=/tmp/custom.db",
-		"--compaction-interval=2m",
-		"--compaction-batch-size=5000",
-		"--watch-progress-notify-interval=30s",
+		"--database-max-open-connections=8",
+		"--database-max-idle-connections=4",
+		"--database-connection-max-lifetime=1h",
+		"--etcd-version=3.6.5",
+		"--etcd-compaction-interval=2m",
+		"--etcd-compaction-batch-size=5000",
+		"--etcd-watch-progress-notify-interval=30s",
 	}
 
 	err := fs.Parse(args)
@@ -42,19 +46,29 @@ func TestAddFlags(t *testing.T) {
 	}
 
 	if o.DatabasePath != "/tmp/custom.db" {
-		t.Errorf("expected DatabasePath %s, got %s", "/tmp/custom.db", o.DatabasePath)
+		t.Errorf("expected DatabasePath '/tmp/custom.db', got %s", o.DatabasePath)
+	}
+	if o.DatabaseMaxOpenConns != 8 {
+		t.Errorf("expected DatabaseMaxOpenConns 8, got %d", o.DatabaseMaxOpenConns)
+	}
+	if o.DatabaseMaxIdleConns != 4 {
+		t.Errorf("expected DatabaseMaxIdleConns 4, got %d", o.DatabaseMaxIdleConns)
+	}
+	if o.DatabaseMaxConnLifetime != time.Hour {
+		t.Errorf("expected DatabaseMaxConnLifetime 1h, got %v", o.DatabaseMaxConnLifetime)
 	}
 
-	if o.CompactionInterval != 2*time.Minute {
-		t.Errorf("expected CompactionInterval %v, got %v", 2*time.Minute, o.CompactionInterval)
+	if o.EtcdVersion != "3.6.5" {
+		t.Errorf("expected EtcdVersion '3.6.5', got %s", o.EtcdVersion)
 	}
-
-	if o.CompactionBatchSize != 5000 {
-		t.Errorf("expected CompactionBatchSize %d, got %d", 5000, o.CompactionBatchSize)
+	if o.EtcdCompactionInterval != 2*time.Minute {
+		t.Errorf("expected EtcdCompactionInterval '2m', got %s", o.EtcdCompactionInterval)
 	}
-
-	if o.WatchProgressNotifyInterval != 30*time.Second {
-		t.Errorf("expected WatchProgressNotifyInterval %v, got %v", 30*time.Second, o.WatchProgressNotifyInterval)
+	if o.EtcdCompactionBatchSize != 5000 {
+		t.Errorf("expected EtcdCompactionBatchSize '5000', got %d", o.EtcdCompactionBatchSize)
+	}
+	if o.EtcdWatchProgressNotifyInterval != 30*time.Second {
+		t.Errorf("expected EtcdWatchProgressNotifyInterval '30s', got %s", o.EtcdWatchProgressNotifyInterval)
 	}
 }
 
@@ -62,7 +76,6 @@ func TestComplete(t *testing.T) {
 	t.Run("Default assignments", func(t *testing.T) {
 		opts := NewOptions()
 		opts.DatabasePath = ""
-		opts.KineSocketPath = ""
 
 		completed, err := opts.Complete()
 		if err != nil {
@@ -76,13 +89,62 @@ func TestComplete(t *testing.T) {
 			t.Errorf("expected default listener URI, got %s", completed.KineConfig.Listener)
 		}
 		if !strings.Contains(completed.KineConfig.Endpoint, IN_MEMORY) {
-			t.Errorf("DSN not properly constructed: %s", completed.KineConfig.Endpoint)
+			t.Errorf("expected default DSN to contain %s, got %s", IN_MEMORY, completed.KineConfig.Endpoint)
 		}
-		if completed.KineConfig.ConnectionPoolConfig.MaxOpen != 2 {
-			t.Errorf("expected default max open connections, got %d", completed.KineConfig.ConnectionPoolConfig.MaxOpen)
+		if completed.KineConfig.ConnectionPoolConfig.MaxOpen != defaultDatabaseMaxOpenConns {
+			t.Errorf("expected database max open connections %d, got %d", defaultDatabaseMaxOpenConns, completed.KineConfig.ConnectionPoolConfig.MaxOpen)
+		}
+		if completed.KineConfig.ConnectionPoolConfig.MaxIdle != defaultDatabaseMaxIdleConns {
+			t.Errorf("expected database max idle connections %d, got %d", defaultDatabaseMaxIdleConns, completed.KineConfig.ConnectionPoolConfig.MaxIdle)
+		}
+		if completed.KineConfig.ConnectionPoolConfig.MaxLifetime != defaultDatabaseMaxConnLifetime {
+			t.Errorf("expected database max connection lifetime %d, got %d", defaultDatabaseMaxConnLifetime, completed.KineConfig.ConnectionPoolConfig.MaxLifetime)
 		}
 		if completed.DatabaseDir != "/tmp" {
-			t.Errorf("DatabaseDir not derived correctly: %s", completed.DatabaseDir)
+			t.Errorf("expected database directory '/tmp', got %s", completed.DatabaseDir)
+		}
+
+		if completed.KineConfig.EmulatedETCDVersion != defaultEtcdVersion {
+			t.Errorf("expected etcd version %s, got %s", defaultEtcdVersion, completed.KineConfig.EmulatedETCDVersion)
+		}
+		if completed.KineConfig.CompactInterval != defaultEtcdCompactionInterval {
+			t.Errorf("expected etcd compaction interval %d, got %d", defaultEtcdCompactionInterval, completed.KineConfig.CompactInterval)
+		}
+		if completed.KineConfig.CompactBatchSize != defaultEtcdCompactionBatchSize {
+			t.Errorf("expected etcd compaction batch size %d, got %d", defaultEtcdCompactionBatchSize, completed.KineConfig.CompactBatchSize)
+		}
+		if completed.KineConfig.NotifyInterval != defaultEtcdWatchProgressNotifyInterval {
+			t.Errorf("expected etcd watch progress notify interval %d, got %d", defaultEtcdWatchProgressNotifyInterval, completed.KineConfig.NotifyInterval)
+		}
+	})
+
+	t.Run("Database max idle connections 0 maps to -1", func(t *testing.T) {
+		opts := NewOptions()
+		opts.DatabaseMaxIdleConns = 0
+
+		completed, _ := opts.Complete()
+		if completed.KineConfig.ConnectionPoolConfig.MaxIdle != -1 {
+			t.Errorf("expected database max idle connections -1 for input 0, got %d", completed.KineConfig.ConnectionPoolConfig.MaxIdle)
+		}
+	})
+
+	t.Run("Etcd compaction batch size 0 maps to default", func(t *testing.T) {
+		opts := NewOptions()
+		opts.EtcdCompactionBatchSize = 0
+
+		completed, _ := opts.Complete()
+		if completed.EtcdCompactionBatchSize != defaultEtcdCompactionBatchSize {
+			t.Errorf("expected etcd compaction batch size %d for input 0, got %d", defaultEtcdCompactionBatchSize, completed.EtcdCompactionBatchSize)
+		}
+	})
+
+	t.Run("Etcd watch progress notify interval 0 maps to default", func(t *testing.T) {
+		opts := NewOptions()
+		opts.EtcdWatchProgressNotifyInterval = 0
+
+		completed, _ := opts.Complete()
+		if completed.EtcdWatchProgressNotifyInterval != defaultEtcdWatchProgressNotifyInterval {
+			t.Errorf("expected etcd watch progress notify interval %d for input 0, got %d", defaultEtcdWatchProgressNotifyInterval, completed.EtcdWatchProgressNotifyInterval)
 		}
 	})
 
@@ -95,20 +157,6 @@ func TestComplete(t *testing.T) {
 			t.Errorf("Complete should trim prefix from SocketPath: got %s", completed.KineSocketPath)
 		}
 	})
-
-	t.Run("Maps intervals to KineConfig", func(t *testing.T) {
-		opts := NewOptions()
-		opts.CompactionInterval = 10 * time.Minute
-		opts.WatchProgressNotifyInterval = 15 * time.Second
-
-		completed, _ := opts.Complete()
-		if completed.KineConfig.CompactInterval != 10*time.Minute {
-			t.Error("CompactInterval not mapped to KineConfig")
-		}
-		if completed.KineConfig.NotifyInterval != 15*time.Second {
-			t.Error("NotifyInterval not mapped to KineConfig")
-		}
-	})
 }
 
 func TestValidate(t *testing.T) {
@@ -119,12 +167,22 @@ func TestValidate(t *testing.T) {
 		errContains string
 	}{
 		{
-			name:    "Valid defaults",
-			modify:  func(o *Options) {},
+			name: "Valid defaults",
+			modify: func(o *Options) {
+				o.Complete()
+			},
 			wantErr: false,
 		},
 		{
-			name: "Relative database path",
+			name: "Database path is required",
+			modify: func(o *Options) {
+				o.DatabasePath = ""
+			},
+			wantErr:     true,
+			errContains: "required",
+		},
+		{
+			name: "Database path must be absolute",
 			modify: func(o *Options) {
 				o.DatabasePath = "relative/path.db"
 			},
@@ -132,68 +190,128 @@ func TestValidate(t *testing.T) {
 			errContains: "must be an absolute path",
 		},
 		{
-			name: "Compaction interval too low (but > 0)",
+			name: "Database max open connections ceiling",
 			modify: func(o *Options) {
-				o.CompactionInterval = 30 * time.Second
-			},
-			wantErr:     true,
-			errContains: "must be 1m or greater",
-		},
-		{
-			name: "Compaction interval 0 is allowed",
-			modify: func(o *Options) {
-				o.CompactionInterval = 0
-			},
-			wantErr: false,
-		},
-		{
-			name: "Compaction batch size too large",
-			modify: func(o *Options) {
-				o.CompactionBatchSize = 50000
-			},
-			wantErr:     true,
-			errContains: "must be 10000 or less",
-		},
-		{
-			name: "Watch notify interval below floor",
-			modify: func(o *Options) {
-				o.WatchProgressNotifyInterval = 1 * time.Second
-			},
-			wantErr:     true,
-			errContains: "must be 5s or greater",
-		},
-		{
-			name: "Watch notify interval above ceiling",
-			modify: func(o *Options) {
-				o.WatchProgressNotifyInterval = 30 * time.Minute
-			},
-			wantErr:     true,
-			errContains: "must be 10m or less",
-		},
-		{
-			name: "Max open connections too low",
-			modify: func(o *Options) {
-				o.KineConfig.ConnectionPoolConfig.MaxOpen = -1
-			},
-			wantErr:     true,
-			errContains: "must be greater than 0",
-		},
-		{
-			name: "Max open connections too high",
-			modify: func(o *Options) {
-				o.KineConfig.ConnectionPoolConfig.MaxOpen = 100
+				o.DatabaseMaxOpenConns = 11
 			},
 			wantErr:     true,
 			errContains: "must be 10 or less",
 		},
 		{
-			name: "Socket path/URI mismatch",
+			name: "Database max idle conns cannot exceed max open conns",
 			modify: func(o *Options) {
-				o.KineSocketPath = "/path/a.sock"
-				o.KineConfig.Listener = "unix:///path/b.sock"
+				o.DatabaseMaxOpenConns = 2
+				o.DatabaseMaxIdleConns = 5
 			},
 			wantErr:     true,
-			errContains: "does not match kine-socket-path",
+			errContains: "cannot be greater than --database-max-open-connections",
+		},
+		{
+			name: "Database max idle connections must be postive",
+			modify: func(o *Options) {
+				o.DatabaseMaxIdleConns = -1
+			},
+			wantErr:     true,
+			errContains: "must be 0 or greater",
+		},
+		{
+			name: "Database max connection lifetime must be positive",
+			modify: func(o *Options) {
+				o.DatabaseMaxConnLifetime = -1 * time.Minute
+			},
+			wantErr:     true,
+			errContains: "must be 0s or greater",
+		},
+		{
+			name: "Database max connection lifetime must be at least 1s",
+			modify: func(o *Options) {
+				o.DatabaseMaxConnLifetime = 5 * time.Millisecond
+			},
+			wantErr:     true,
+			errContains: "must be 0s (unlimited) or at least 1s",
+		},
+		{
+			name: "Etcd version is required",
+			modify: func(o *Options) {
+				o.EtcdVersion = ""
+			},
+			wantErr:     true,
+			errContains: "required",
+		},
+		{
+			name: "Etcd compaction interval must be at least 1m",
+			modify: func(o *Options) {
+				o.EtcdCompactionInterval = 10 * time.Second
+			},
+			wantErr:     true,
+			errContains: "must be 1m or greater",
+		},
+		{
+			name: "Etcd compaction batch size must be greater than 0",
+			modify: func(o *Options) {
+				o.EtcdCompactionBatchSize = 0
+			},
+			wantErr:     true,
+			errContains: "must be between 1 and",
+		},
+		{
+			name: "Etcd compaction batch size must be less than 10000",
+			modify: func(o *Options) {
+				o.EtcdCompactionBatchSize = 15000
+			},
+			wantErr:     true,
+			errContains: "must be between 1 and 10000",
+		},
+		{
+			name: "Etcd watch progress notify interval must be greater than 5s",
+			modify: func(o *Options) {
+				o.EtcdWatchProgressNotifyInterval = 1 * time.Second
+			},
+			wantErr:     true,
+			errContains: "must be between 5s and",
+		},
+		{
+			name: "Etcd watch progress notify interval must be less than 10m",
+			modify: func(o *Options) {
+				o.EtcdWatchProgressNotifyInterval = 11 * time.Minute
+			},
+			wantErr:     true,
+			errContains: "must be between 5s and 10m",
+		},
+		{
+			name: "Default socket path is valid",
+			modify: func(o *Options) {
+				o.KineSocketPath = ""
+				// Satisfy the upstream Etcd validator
+				if o.Etcd != nil && o.Etcd.StorageConfig.Transport.ServerList == nil {
+					o.Etcd.StorageConfig.Transport.ServerList = []string{"unix:///var/run/nvidia-device-api/kine.sock"}
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "Relative kine socket path",
+			modify: func(o *Options) {
+				o.KineSocketPath = "relative/socket.sock"
+			},
+			wantErr:     true,
+			errContains: "must be an absolute path",
+		},
+		{
+			name: "Invalid unix socket URI format",
+			modify: func(o *Options) {
+				o.KineConfig.Listener = "http://localhost:8080"
+			},
+			wantErr:     true,
+			errContains: "kine listener",
+		},
+		{
+			name: "Malformed unix URI",
+			modify: func(o *Options) {
+				o.KineConfig.Listener = "unix:tmp/abs/path.sock"
+			},
+			wantErr:     true,
+			errContains: "kine listener",
 		},
 	}
 
@@ -202,11 +320,7 @@ func TestValidate(t *testing.T) {
 			opts := NewOptions()
 			tt.modify(opts)
 
-			completed, err := opts.Complete()
-			if err != nil {
-				t.Fatalf("Complete() failed: %v", err)
-			}
-			errs := completed.Validate()
+			errs := opts.Validate()
 
 			if (len(errs) > 0) != tt.wantErr {
 				t.Errorf("Validate() errors = %v, wantErr %v", errs, tt.wantErr)

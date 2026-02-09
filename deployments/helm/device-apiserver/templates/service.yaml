@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "device-apiserver.fullname" . }}
+  labels:
+    {{- include "device-apiserver.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+    - port: {{ .Values.service.healthPort | default 50051 }}
+      targetPort: health
+      protocol: TCP
+      name: health
+    - port: {{ .Values.service.metricsPort }}
+      targetPort: metrics
+      name: metrics
+      protocol: TCP
+  selector:
+    {{- include "device-apiserver.selectorLabels" . | nindent 4 }}

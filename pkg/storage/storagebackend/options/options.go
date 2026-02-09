@@ -30,11 +30,25 @@ import (
 
 const IN_MEMORY = "file::memory:"
 
+const (
+	defaultEtcdVersion                     = "3.5.13"
+	defaultEtcdCompactionInterval          = 5 * time.Minute
+	defaultEtcdCompactionBatchSize         = 1000
+	defaultEtcdWatchProgressNotifyInterval = 5 * time.Second
+	defaultDatabaseMaxOpenConns            = 5
+	defaultDatabaseMaxIdleConns            = 5
+	defaultDatabaseMaxConnLifetime         = 0
+)
+
 type Options struct {
-	DatabasePath                string
-	CompactionInterval          time.Duration
-	CompactionBatchSize         int64
-	WatchProgressNotifyInterval time.Duration
+	DatabasePath                    string
+	DatabaseMaxOpenConns            int
+	DatabaseMaxIdleConns            int
+	DatabaseMaxConnLifetime         time.Duration
+	EtcdVersion                     string
+	EtcdCompactionInterval          time.Duration
+	EtcdCompactionBatchSize         int64
+	EtcdWatchProgressNotifyInterval time.Duration
 
 	KineConfig     endpoint.Config
 	KineSocketPath string
@@ -52,11 +66,15 @@ type CompletedOptions struct {
 
 func NewOptions() *Options {
 	return &Options{
-		DatabasePath:                IN_MEMORY,
-		CompactionInterval:          5 * time.Minute,
-		CompactionBatchSize:         1000,
-		WatchProgressNotifyInterval: 5 * time.Second,
-		Etcd:                        options.NewEtcdOptions(apistorage.NewDefaultConfig("/registry", nil)),
+		DatabasePath:                    IN_MEMORY,
+		EtcdVersion:                     defaultEtcdVersion,
+		EtcdCompactionInterval:          defaultEtcdCompactionInterval,
+		EtcdCompactionBatchSize:         defaultEtcdCompactionBatchSize,
+		EtcdWatchProgressNotifyInterval: defaultEtcdWatchProgressNotifyInterval,
+		DatabaseMaxOpenConns:            defaultDatabaseMaxOpenConns,
+		DatabaseMaxIdleConns:            defaultDatabaseMaxIdleConns,
+		DatabaseMaxConnLifetime:         defaultDatabaseMaxConnLifetime,
+		Etcd:                            options.NewEtcdOptions(apistorage.NewDefaultConfig("/registry", nil)),
 	}
 }
 
@@ -70,12 +88,21 @@ func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 	storageFs.StringVar(&o.DatabasePath, "database-path", o.DatabasePath,
 		"The path to the SQLite database file. Defaults to in-memory (\"file::memory:\"). "+
 			"If using a file, the path must be absolute.")
+	storageFs.IntVar(&o.DatabaseMaxOpenConns, "database-max-open-connections", o.DatabaseMaxOpenConns,
+		"The maximum number of open connections to the backend database. Set to 0 or less for unlimited.")
+	storageFs.IntVar(&o.DatabaseMaxIdleConns, "database-max-idle-connections", o.DatabaseMaxIdleConns,
+		"The maximum number of idle connections to the backend database. Set to 0 to disable connection pooling.")
+	storageFs.DurationVar(&o.DatabaseMaxConnLifetime, "database-connection-max-lifetime", o.DatabaseMaxConnLifetime,
+		"The maximum amount of time a database connection may be reused. Set to 0s for unlimited. "+
+			"If enabled, must be at least 1s.")
 
-	storageFs.DurationVar(&o.CompactionInterval, "compaction-interval", o.CompactionInterval,
+	storageFs.StringVar(&o.EtcdVersion, "etcd-version", o.EtcdVersion,
+		"The emulated etcd version. Defaults to 3.5.13, to indicate support for watch progress notifications.")
+	storageFs.DurationVar(&o.EtcdCompactionInterval, "etcd-compaction-interval", o.EtcdCompactionInterval,
 		"The interval of compaction requests. If 0, compaction is disabled. If enabled, must be at least 1m.")
-	storageFs.Int64Var(&o.CompactionBatchSize, "compaction-batch-size", o.CompactionBatchSize,
+	storageFs.Int64Var(&o.EtcdCompactionBatchSize, "etcd-compaction-batch-size", o.EtcdCompactionBatchSize,
 		"Number of revisions to compact in a single batch. Must be between 1 and 10000.")
-	storageFs.DurationVar(&o.WatchProgressNotifyInterval, "watch-progress-notify-interval", o.WatchProgressNotifyInterval,
+	storageFs.DurationVar(&o.EtcdWatchProgressNotifyInterval, "etcd-watch-progress-notify-interval", o.EtcdWatchProgressNotifyInterval,
 		"Interval between periodic watch progress notifications. Must be between 5s and 10m.")
 }
 
@@ -129,10 +156,33 @@ func (o *Options) Complete() (CompletedOptions, error) {
 		o.KineConfig.Endpoint = fmt.Sprintf("sqlite://%s?%s", o.DatabasePath, v.Encode())
 	}
 
-	o.KineConfig.CompactInterval = o.CompactionInterval
-	o.KineConfig.CompactBatchSize = o.CompactionBatchSize
-	o.KineConfig.NotifyInterval = o.WatchProgressNotifyInterval
-	o.KineConfig.ConnectionPoolConfig.MaxOpen = 2
+	o.KineConfig.ConnectionPoolConfig.MaxOpen = o.DatabaseMaxOpenConns
+
+	if o.DatabaseMaxIdleConns == 0 {
+		// In database/sql, MaxIdleConns 0 defaults to 2; set to negative to disable connection pooling.
+		o.KineConfig.ConnectionPoolConfig.MaxIdle = -1
+	} else {
+		o.KineConfig.ConnectionPoolConfig.MaxIdle = o.DatabaseMaxIdleConns
+	}
+
+	o.KineConfig.ConnectionPoolConfig.MaxLifetime = o.DatabaseMaxConnLifetime
+
+	if o.EtcdVersion == "" {
+		o.EtcdVersion = defaultEtcdVersion
+	}
+	o.KineConfig.EmulatedETCDVersion = o.EtcdVersion
+
+	o.KineConfig.CompactInterval = o.EtcdCompactionInterval
+
+	if o.EtcdCompactionBatchSize == 0 {
+		o.EtcdCompactionBatchSize = defaultEtcdCompactionBatchSize
+	}
+	o.KineConfig.CompactBatchSize = o.EtcdCompactionBatchSize
+
+	if o.EtcdWatchProgressNotifyInterval <= 0 {
+		o.EtcdWatchProgressNotifyInterval = defaultEtcdWatchProgressNotifyInterval
+	}
+	o.KineConfig.NotifyInterval = o.EtcdWatchProgressNotifyInterval
 
 	o.Etcd.StorageConfig.HealthcheckTimeout = 10 * time.Second
 	o.Etcd.StorageConfig.ReadycheckTimeout = 10 * time.Second
@@ -150,7 +200,6 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	}, nil
 }
 
-//nolint:gocyclo,cyclop
 func (o *Options) Validate() []error {
 	if o == nil {
 		return nil
@@ -159,79 +208,65 @@ func (o *Options) Validate() []error {
 	allErrors := []error{}
 
 	if o.DatabasePath == "" {
-		allErrors = append(allErrors, fmt.Errorf("database-path: required"))
+		allErrors = append(allErrors, fmt.Errorf("--database-path: required"))
 	}
-
 	if o.DatabasePath != IN_MEMORY && !filepath.IsAbs(o.DatabasePath) {
-		allErrors = append(allErrors, fmt.Errorf("database-path %q: must be an absolute path", o.DatabasePath))
+		allErrors = append(allErrors, fmt.Errorf("--database-path %q: must be an absolute path", o.DatabasePath))
 	}
 
-	if o.DatabaseDir == "" {
-		allErrors = append(allErrors, fmt.Errorf("database directory: not initialized"))
+	expectedSocketPath := o.KineSocketPath
+	if expectedSocketPath == "" {
+		expectedSocketPath = "/var/run/nvidia-device-api/kine.sock"
 	}
 
-	if o.KineSocketPath == "" {
-		allErrors = append(allErrors, fmt.Errorf("kine-socket-path: not initialized"))
-	} else if !filepath.IsAbs(o.KineSocketPath) {
-		allErrors = append(allErrors, fmt.Errorf("kine-socket-path %q: must be an absolute path", o.KineSocketPath))
+	if !filepath.IsAbs(expectedSocketPath) {
+		allErrors = append(allErrors, fmt.Errorf("kine socket path %q: must be an absolute path", expectedSocketPath))
 	}
 
-	if o.KineConfig.Listener == "" {
-		allErrors = append(allErrors, fmt.Errorf("kine-listener: required"))
-	} else {
-		if validationErrors := nvvalidation.IsUnixSocketURI(o.KineConfig.Listener); len(validationErrors) > 0 {
-			for _, errDesc := range validationErrors {
-				allErrors = append(allErrors, fmt.Errorf("kine-listener %q: %s", o.KineConfig.Listener, errDesc))
-			}
-		}
+	expectedListener := o.KineConfig.Listener
+	if expectedListener == "" {
+		expectedListener = "unix://" + expectedSocketPath
+	}
 
-		actualPath := strings.TrimPrefix(o.KineConfig.Listener, "unix://")
-		if actualPath != o.KineSocketPath {
-			allErrors = append(allErrors,
-				fmt.Errorf("kine-listener path %q: does not match kine-socket-path %q",
-					actualPath,
-					o.KineSocketPath))
+	if validationErrors := nvvalidation.IsUnixSocketURI(expectedListener); len(validationErrors) > 0 {
+		for _, errDesc := range validationErrors {
+			allErrors = append(allErrors, fmt.Errorf("kine listener %q: %s", expectedListener, errDesc))
 		}
 	}
 
-	if o.CompactionInterval > 0 && o.CompactionInterval < 1*time.Minute {
-		allErrors = append(allErrors,
-			fmt.Errorf("compaction-interval: %v must be 1m or greater (or 0 to disable)",
-				o.CompactionInterval))
-	} else if o.CompactionInterval < 0 {
-		allErrors = append(allErrors,
-			fmt.Errorf("compaction-interval: %v must be 0s or greater",
-				o.CompactionInterval))
+	if o.DatabaseMaxOpenConns > 10 {
+		allErrors = append(allErrors, fmt.Errorf("--database-max-open-connections: %v must be 10 or less", o.DatabaseMaxOpenConns))
 	}
 
-	if o.CompactionBatchSize <= 0 {
-		allErrors = append(allErrors,
-			fmt.Errorf("compaction-batch-size: %v must be greater than 0",
-				o.CompactionBatchSize))
-	} else if o.CompactionBatchSize > 10000 {
-		allErrors = append(allErrors,
-			fmt.Errorf("compaction-batch-size: %v must be 10000 or less",
-				o.CompactionBatchSize))
+	if o.DatabaseMaxIdleConns > o.DatabaseMaxOpenConns && o.DatabaseMaxOpenConns > 0 {
+		allErrors = append(allErrors, fmt.Errorf("--database-max-idle-connections (%d) cannot be greater than --database-max-open-connections (%d)",
+			o.DatabaseMaxIdleConns, o.DatabaseMaxOpenConns))
+	}
+	if o.DatabaseMaxIdleConns < 0 {
+		allErrors = append(allErrors, fmt.Errorf("--database-max-idle-connections: %v must be 0 or greater", o.DatabaseMaxIdleConns))
 	}
 
-	if o.WatchProgressNotifyInterval < 5*time.Second {
-		allErrors = append(allErrors,
-			fmt.Errorf("watch-progress-notify-interval: %v must be 5s or greater",
-				o.WatchProgressNotifyInterval))
-	} else if o.WatchProgressNotifyInterval > 10*time.Minute {
-		allErrors = append(allErrors,
-			fmt.Errorf("watch-progress-notify-interval: %v must be 10m or less",
-				o.WatchProgressNotifyInterval))
+	if o.DatabaseMaxConnLifetime < 0 {
+		allErrors = append(allErrors, fmt.Errorf("--database-connection-max-lifetime: %v must be 0s or greater", o.DatabaseMaxConnLifetime))
+	}
+	if o.DatabaseMaxConnLifetime > 0 && o.DatabaseMaxConnLifetime < time.Second {
+		allErrors = append(allErrors, fmt.Errorf("--database-connection-max-lifetime: %v must be 0s (unlimited) or at least 1s", o.DatabaseMaxConnLifetime))
 	}
 
-	if o.KineConfig.ConnectionPoolConfig.MaxOpen <= 0 {
-		allErrors = append(allErrors,
-			fmt.Errorf("max-open-connections: %v must be greater than 0",
-				o.KineConfig.ConnectionPoolConfig.MaxOpen))
-	} else if o.KineConfig.ConnectionPoolConfig.MaxOpen > 10 {
-		allErrors = append(allErrors,
-			fmt.Errorf("max-open-connections: %v must be 10 or less",
-				o.KineConfig.ConnectionPoolConfig.MaxOpen))
+	if o.EtcdVersion == "" {
+		allErrors = append(allErrors, fmt.Errorf("--etcd-version: required"))
+	}
+
+	if o.EtcdCompactionInterval > 0 && o.EtcdCompactionInterval < 1*time.Minute {
+		allErrors = append(allErrors, fmt.Errorf("--etcd-compaction-interval: %v must be 1m or greater (or 0 to disable)", o.EtcdCompactionInterval))
+	}
+
+	if o.EtcdCompactionBatchSize <= 0 || o.EtcdCompactionBatchSize > 10000 {
+		allErrors = append(allErrors, fmt.Errorf("--etcd-compaction-batch-size: %v must be between 1 and 10000", o.EtcdCompactionBatchSize))
+	}
+
+	if o.EtcdWatchProgressNotifyInterval < 5*time.Second || o.EtcdWatchProgressNotifyInterval > 10*time.Minute {
+		allErrors = append(allErrors, fmt.Errorf("--etcd-watch-progress-notify-interval: %v must be between 5s and 10m", o.EtcdWatchProgressNotifyInterval))
 	}
 
 	if o.Etcd != nil {

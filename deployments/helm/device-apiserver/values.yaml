@@ -1,0 +1,108 @@
+# Default values for device-apiserver.
+
+# String to override the release name.
+nameOverride: ""
+# String to override the fully qualified application name.
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/nvidia/device-apiserver
+  pullPolicy: IfNotPresent
+  tag: ""
+
+# Reference to one or more secrets to be used for pulling images from private registries.
+# Example for NVIDIA NGC registry (nvcr.io):
+#
+# First, create a Kubernetes secret with your NGC API key:
+#   kubectl create secret docker-registry ngc-secret \
+#     --docker-server=nvcr.io \
+#     --docker-username='$oauthtoken' \
+#     --docker-password='nvapi-YOUR-API-KEY' \
+#     --namespace=<your-namespace>
+#
+# Then reference the secret here:
+# imagePullSecrets:
+#   - name: ngc-secret
+imagePullSecrets: []
+
+# Additional annotations to add to the pod.
+podAnnotations: {}
+
+# Additional labels to add to the pod.
+podLabels: {}
+
+# Pod-level security context.
+podSecurityContext:
+  fsGroup: 5000
+
+# Container-level security context.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 5000
+
+# Settings for the service account used by the pod.
+serviceAccount:
+  # Specifies whether a service account should be created.
+  create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # Annotations to add to the service account.
+  annotations: {}
+  # The name of the service account to use. If not set and create is true, a name is generated.
+  name: ""
+
+# Service configuration for API, health, and metrics endpoints.
+service:
+  type: ClusterIP
+  port: 8080
+  healthPort: 50051
+  metricsPort: 9090
+
+# Prometheus operator configuration for scraping metrics.
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+  honorLabels: true
+
+# Resource requests and limits for the container.
+resources:
+  requests:
+    cpu: 500m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 256Mi
+
+# Node selector, tolerations, and affinity for pod scheduling.
+nodeSelector: {}
+tolerations:
+  - operator: "Exists"
+
+# By default, this chart only schedules pods on nodes with NVIDIA GPUs.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: nvidia.com/gpu.product
+          operator: Exists
+
+# Liveness and Readiness probes.
+livenessProbe:
+  grpc:
+    port: 50051
+readinessProbe:
+  grpc:
+    port: 50051
+
+# Extra volumes to mount into the pod.
+extraVolumes: []
+
+# Extra volume mounts for the container.
+extraVolumeMounts: []
+
+# Extra arguments to pass to the binary.
+extraArgs: []
