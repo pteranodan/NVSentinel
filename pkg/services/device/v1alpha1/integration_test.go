@@ -26,6 +26,76 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func TestIntegration_WatchResumption(t *testing.T) {
+	client := testutil.NewTestGPUClient(t)
+	ctx := t.Context()
+
+	_, err := client.CreateGpu(ctx, &pb.CreateGpuRequest{
+		Gpu: &pb.Gpu{
+			Metadata: &pb.ObjectMeta{Name: "gpu-baseline", Namespace: "default"},
+			Spec:     &pb.GpuSpec{Uuid: "UUID-BASE"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	listResp, err := client.ListGpus(ctx, &pb.ListGpusRequest{Namespace: "default"})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	snapshotRV := listResp.GetGpuList().GetMetadata().GetResourceVersion()
+	t.Logf("Snapshot RV: %s", snapshotRV)
+
+	// Create a new GPU *after* the List but *before* the Watch
+	_, err = client.CreateGpu(ctx, &pb.CreateGpuRequest{
+		Gpu: &pb.Gpu{
+			Metadata: &pb.ObjectMeta{Name: "gpu-gap", Namespace: "default"},
+			Spec:     &pb.GpuSpec{Uuid: "UUID-GAP"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("gap creation failed: %v", err)
+	}
+
+	// Start Watch from the snapshot RV
+	stream, err := client.WatchGpus(ctx, &pb.WatchGpusRequest{
+		Namespace: "default",
+		Opts: &pb.ListOptions{
+			ResourceVersion: snapshotRV,
+		},
+	})
+	if err != nil {
+		t.Fatalf("WatchGpus failed to start: %v", err)
+	}
+
+	doneCh := make(chan struct{})
+	go func() {
+		defer close(doneCh)
+		for {
+			resp, err := stream.Recv()
+			if err != nil {
+				t.Logf("Stream closed or error: %v", err)
+				return
+			}
+
+			// We MUST see "gpu-gap".
+			name := resp.GetObject().GetMetadata().GetName()
+			t.Logf("Received event: %s %s", resp.GetType(), name)
+
+			if resp.GetType() == "ADDED" && name == "gpu-gap" {
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-doneCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("FAIL: Timed out waiting for 'gpu-gap' event i.e., List+Watch missed an event. \n")
+	}
+}
+
 // TestIntegration_CRUD performs a full Create→Get→List→Update→Delete cycle over gRPC.
 func TestIntegration_CRUD(t *testing.T) {
 	client := testutil.NewTestGPUClient(t)
