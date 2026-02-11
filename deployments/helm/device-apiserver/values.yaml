@@ -70,11 +70,17 @@ serviceMonitor:
 # Resource requests and limits for the container.
 resources:
   requests:
-    cpu: 500m
-    memory: 128Mi
-  limits:
-    cpu: 1000m
+    cpu: 1 
     memory: 256Mi
+  limits:
+    cpu: 2 
+    memory: 384Mi
+
+env:
+  - name: GOMAXPROCS
+    value: "2"
+  - name: GOMEMLIMIT
+    value: "300MiB"
 
 # Node selector, tolerations, and affinity for pod scheduling.
 nodeSelector: {}
@@ -90,13 +96,21 @@ affinity:
         - key: nvidia.com/gpu.product
           operator: Exists
 
-# Liveness and Readiness probes.
+# Startup, Liveness, and Readiness probes.
+startupProbe:
+  grpc:
+    port: 50051
+  periodSeconds: 1
+  failureThreshold: 30
 livenessProbe:
   grpc:
     port: 50051
+  periodSeconds: 30
+  timeoutSeconds: 5
 readinessProbe:
   grpc:
     port: 50051
+  periodSeconds: 2
 
 # Extra volumes to mount into the pod.
 extraVolumes: []

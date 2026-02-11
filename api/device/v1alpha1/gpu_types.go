@@ -48,8 +48,7 @@ type GPUStatus struct {
 //
 // +genclient
 // +genclient:nonNamespaced
-// +genclient:onlyVerbs=get,list,watch,create,update,delete
-// +genclient:noStatus
+// +genclient:skipVerbs=patch
 // +k8s:deepcopy-gen=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type GPU struct {

@@ -40,10 +40,10 @@ spec:
           resources:
             requests:
               cpu: 10m
-              memory: 8Mi
+              memory: 4Mi
             limits:
               cpu: 50m
-              memory: 16Mi
+              memory: 8Mi
           securityContext:
             runAsUser: 0
             capabilities:
@@ -66,6 +66,10 @@ spec:
                 - ALL
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           args:
             - "--health-probe-bind-address=:{{ .Values.service.healthPort }}"
             - "--metrics-bind-address=:{{ .Values.service.metricsPort }}"
@@ -81,6 +85,8 @@ spec:
               protocol: TCP
             - name: metrics
               containerPort: {{ .Values.service.metricsPort }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
@@ -92,6 +98,8 @@ spec:
               mountPath: /var/run/nvidia-device-api
             - name: tmp-memory
               mountPath: /tmp
+            - name: lib-device-api
+              mountPath: /var/lib/nvidia-device-api
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -103,6 +111,10 @@ spec:
         - name: tmp-memory
           emptyDir:
             medium: Memory
+        - name: lib-device-api
+          hostPath:
+            path: /var/lib/nvidia-device-api
+            type: DirectoryOrCreate
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

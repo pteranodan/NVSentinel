@@ -23,6 +23,7 @@ import (
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
 	pb "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
 	client "github.com/nvidia/nvsentinel/pkg/grpc/client"
+	errors "github.com/nvidia/nvsentinel/pkg/grpc/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -38,6 +39,7 @@ type GPUsGetter interface {
 type GPUInterface interface {
 	Create(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.CreateOptions) (*devicev1alpha1.GPU, error)
 	Update(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error)
+	UpdateStatus(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	Get(ctx context.Context, name string, opts v1.GetOptions) (*devicev1alpha1.GPU, error)
 	List(ctx context.Context, opts v1.ListOptions) (*devicev1alpha1.GPUList, error)
@@ -75,7 +77,7 @@ func (c *gpus) Get(ctx context.Context, name string, opts v1.GetOptions) (*devic
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", name)
 	}
 
 	obj := devicev1alpha1.FromProto(resp.GetGpu())
@@ -92,11 +94,12 @@ func (c *gpus) List(ctx context.Context, opts v1.ListOptions) (*devicev1alpha1.G
 	resp, err := c.client.ListGpus(ctx, &pb.ListGpusRequest{
 		Namespace: c.getNamespace(),
 		Opts: &pb.ListOptions{
-			ResourceVersion: opts.ResourceVersion,
+			ResourceVersion:      opts.ResourceVersion,
+			ResourceVersionMatch: string(opts.ResourceVersionMatch),
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", "")
 	}
 
 	list := devicev1alpha1.FromProtoList(resp.GetGpuList())
@@ -114,6 +117,7 @@ func (c *gpus) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface,
 		"resource", "gpus",
 		"namespace", c.getNamespace(),
 		"resource-version", opts.ResourceVersion,
+		"timeout-seconds", opts.TimeoutSeconds,
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -121,11 +125,12 @@ func (c *gpus) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface,
 		Namespace: c.getNamespace(),
 		Opts: &pb.ListOptions{
 			ResourceVersion: opts.ResourceVersion,
+			TimeoutSeconds:  opts.TimeoutSeconds,
 		},
 	})
 	if err != nil {
 		cancel()
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", "")
 	}
 
 	return client.NewWatcher(&gpusStreamAdapter{stream: stream}, cancel, c.logger), nil
@@ -158,7 +163,7 @@ func (c *gpus) Create(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.Crea
 		Opts: &pb.CreateOptions{},
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", gpu.GetName())
 	}
 
 	obj := devicev1alpha1.FromProto(resp)
@@ -178,11 +183,31 @@ func (c *gpus) Update(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.Upda
 		Opts: &pb.UpdateOptions{},
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", gpu.GetName())
 	}
 
 	obj := devicev1alpha1.FromProto(resp)
 	c.logger.V(2).Info("Updated GPU",
+		"name", obj.GetName(),
+		"namespace", c.getNamespace(),
+		"resource-version", obj.GetResourceVersion(),
+	)
+
+	return obj, nil
+}
+
+// TODO: Implement UpdateOptions support.
+func (c *gpus) UpdateStatus(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error) {
+	resp, err := c.client.UpdateGpuStatus(ctx, &pb.UpdateGpuStatusRequest{
+		Gpu:  devicev1alpha1.ToProto(gpu),
+		Opts: &pb.UpdateOptions{},
+	})
+	if err != nil {
+		return nil, errors.NewAPIError(err, "gpus", gpu.GetName())
+	}
+
+	obj := devicev1alpha1.FromProto(resp)
+	c.logger.V(2).Info("Updated Status GPU",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
 		"resource-version", obj.GetResourceVersion(),
@@ -199,7 +224,7 @@ func (c *gpus) Delete(ctx context.Context, name string, opts v1.DeleteOptions) e
 		Opts:      &pb.DeleteOptions{},
 	})
 	if err != nil {
-		return err
+		return errors.NewAPIError(err, "gpus", name)
 	}
 
 	c.logger.V(2).Info("Deleted GPU",

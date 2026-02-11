@@ -47,7 +47,7 @@ type CompletedOptions struct {
 func NewOptions() *Options {
 	return &Options{
 		BindAddress:          "unix:///var/run/nvidia-device-api/device-api.sock",
-		MaxConcurrentStreams: 250,
+		MaxConcurrentStreams: 1000,
 		MaxRecvMsgSize:       4194304,  // 4MiB
 		MaxSendMsgSize:       16777216, // 16MiB
 		MaxConnectionIdle:    5 * time.Minute,
@@ -98,7 +98,7 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	}
 
 	if o.MaxConcurrentStreams == 0 {
-		o.MaxConcurrentStreams = 250
+		o.MaxConcurrentStreams = 1000
 	}
 
 	if o.MaxRecvMsgSize == 0 {
@@ -219,6 +219,12 @@ func (o *Options) ApplyTo(
 	*serverOpts = append(*serverOpts, grpc.MaxConcurrentStreams(o.MaxConcurrentStreams))
 	*serverOpts = append(*serverOpts, grpc.MaxRecvMsgSize(o.MaxRecvMsgSize))
 	*serverOpts = append(*serverOpts, grpc.MaxSendMsgSize(o.MaxSendMsgSize))
+
+	*serverOpts = append(*serverOpts, grpc.WriteBufferSize(524288)) // 512KB
+	*serverOpts = append(*serverOpts, grpc.ReadBufferSize(524288))  // 512KB
+	*serverOpts = append(*serverOpts, grpc.SharedWriteBuffer(true))
+	*serverOpts = append(*serverOpts, grpc.InitialWindowSize(16777216))     // 16MB
+	*serverOpts = append(*serverOpts, grpc.InitialConnWindowSize(16777216)) // 16MB
 
 	*serverOpts = append(*serverOpts, grpc.KeepaliveParams(keepalive.ServerParameters{
 		MaxConnectionIdle: o.MaxConnectionIdle,

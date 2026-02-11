@@ -123,6 +123,7 @@ func (g *genClientForType) GenerateType(c *generator.Context, t *types.Type, w i
 		"watchInterface":   c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/watch", Name: "Interface"}),
 		"logr":             c.Universe.Type(types.Name{Package: "github.com/go-logr/logr", Name: "Logger"}),
 		"nvgrpc":           c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "NewWatcher"}),
+		"grpcerrors":       c.Universe.Function(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/errors", Name: "NewAPIError"}),
 		"pb":               g.protoPackage.Alias,
 		"apiPackage":       c.Universe.Type(types.Name{Package: g.inputPackage, Name: "Ignored"}),
 		"ToProto":          c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProto"}),
@@ -293,11 +294,12 @@ func (c *$.type|allLowercasePlural$) List(ctx $.context|raw$, opts $.ListOptions
 	resp, err := c.client.List$.ProtoType$s(ctx, &$.pb$.List$.ProtoType$sRequest{
 		Namespace: c.getNamespace(),
 		Opts:      &$.pb$.ListOptions{
-			ResourceVersion: opts.ResourceVersion,
+			ResourceVersion:      opts.ResourceVersion,
+			ResourceVersionMatch: string(opts.ResourceVersionMatch),
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, $.grpcerrors|raw$(err, "$.type|allLowercasePlural$", "")
 	}
 
 	list := $.FromProtoList|raw$(resp.Get$.ProtoType$List())
@@ -321,7 +323,7 @@ func (c *$.type|allLowercasePlural$) Get(ctx $.context|raw$, name string, opts $
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, $.grpcerrors|raw$(err, "$.type|allLowercasePlural$", name)
 	}
 
 	obj := $.FromProto|raw$(resp.Get$.ProtoType$())
@@ -344,7 +346,7 @@ func (c *$.type|allLowercasePlural$) Delete(ctx $.context|raw$, name string, opt
 		Opts:      &$.pb$.DeleteOptions{}, 
 	})
 	if err != nil {
-		return err
+		return $.grpcerrors|raw$(err, "$.type|allLowercasePlural$", name)
 	}
 
 	c.logger.V(2).Info("Deleted $.type|public$",
@@ -364,7 +366,7 @@ func (c *$.type|allLowercasePlural$) Create(ctx $.context|raw$, $.type|allLowerc
 		Opts:         &$.pb$.CreateOptions{},
 	})
 	if err != nil {
-		return nil, err
+		return nil, $.grpcerrors|raw$(err, "$.type|allLowercasePlural$", $.type|allLowercase$.GetName())
 	}
 
 	obj := $.FromProto|raw$(resp)
@@ -386,7 +388,7 @@ func (c *$.type|allLowercasePlural$) Update(ctx $.context|raw$, $.type|allLowerc
 		Opts:         &$.pb$.UpdateOptions{},
 	})
 	if err != nil {
-		return nil, err
+		return nil, $.grpcerrors|raw$(err, "$.type|allLowercasePlural$", $.type|allLowercase$.GetName())
 	}
 
 	obj := $.FromProto|raw$(resp)
@@ -401,9 +403,24 @@ func (c *$.type|allLowercasePlural$) Update(ctx $.context|raw$, $.type|allLowerc
 `
 
 var updateStatusTemplate = `
-// TODO: Implement UpdateStatus support.
+// TODO: Implement UpdateOptions support.
 func (c *$.type|allLowercasePlural$) UpdateStatus(ctx $.context|raw$, $.type|allLowercase$ *$.type|raw$, opts $.UpdateOptions|raw$) (*$.type|raw$, error) {
-	return nil, $.fmtErrorf|raw$("UpdateStatus not implemented")
+	resp, err := c.client.Update$.ProtoType$Status(ctx, &$.pb$.Update$.ProtoType$StatusRequest{
+		$.ProtoType$: $.ToProto|raw$($.type|allLowercase$),	
+		Opts:         &$.pb$.UpdateOptions{},
+	})
+	if err != nil {
+		return nil, $.grpcerrors|raw$(err, "$.type|allLowercasePlural$", $.type|allLowercase$.GetName())
+	}
+
+	obj := $.FromProto|raw$(resp)
+	c.logger.V(2).Info("Updated Status $.type|public$",
+		"name", obj.GetName(),
+		"namespace", c.getNamespace(),
+		"resource-version", obj.GetResourceVersion(),
+	)
+
+	return obj, nil
 }
 `
 
@@ -413,6 +430,7 @@ func (c *$.type|allLowercasePlural$) Watch(ctx $.context|raw$, opts $.ListOption
 		"resource", "$.type|allLowercasePlural$",
 		"namespace", c.getNamespace(),
 		"resource-version", opts.ResourceVersion,
+		"timeout-seconds", opts.TimeoutSeconds,
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -420,11 +438,12 @@ func (c *$.type|allLowercasePlural$) Watch(ctx $.context|raw$, opts $.ListOption
 		Namespace: c.getNamespace(),
 		Opts:      &$.pb$.ListOptions{
 			ResourceVersion: opts.ResourceVersion,
+			TimeoutSeconds: opts.TimeoutSeconds,
 		},
 	})
 	if err != nil {
 		cancel()
-		return nil, err
+		return nil, $.grpcerrors|raw$(err, "$.type|allLowercasePlural$", "")
 	}
 
 	return $.nvgrpc|raw$(&$.type|allLowercasePlural$StreamAdapter{stream: stream}, cancel, c.logger), nil

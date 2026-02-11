@@ -28,13 +28,12 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 )
 
-const IN_MEMORY = "file::memory:"
-
 const (
+	defaultDatabasePath                    = "/var/lib/nvidia-device-api/db.sqlite"
 	defaultEtcdVersion                     = "3.5.13"
 	defaultEtcdCompactionInterval          = 5 * time.Minute
 	defaultEtcdCompactionBatchSize         = 1000
-	defaultEtcdWatchProgressNotifyInterval = 5 * time.Second
+	defaultEtcdWatchProgressNotifyInterval = 5 * time.Minute
 	defaultDatabaseMaxOpenConns            = 5
 	defaultDatabaseMaxIdleConns            = 5
 	defaultDatabaseMaxConnLifetime         = 0
@@ -66,7 +65,7 @@ type CompletedOptions struct {
 
 func NewOptions() *Options {
 	return &Options{
-		DatabasePath:                    IN_MEMORY,
+		DatabasePath:                    defaultDatabasePath,
 		EtcdVersion:                     defaultEtcdVersion,
 		EtcdCompactionInterval:          defaultEtcdCompactionInterval,
 		EtcdCompactionBatchSize:         defaultEtcdCompactionBatchSize,
@@ -86,7 +85,7 @@ func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 	storageFs := fss.FlagSet("storage")
 
 	storageFs.StringVar(&o.DatabasePath, "database-path", o.DatabasePath,
-		"The path to the SQLite database file. Defaults to in-memory (\"file::memory:\"). "+
+		"The path to the SQLite database file. Defaults to \"sqlite:///var/lib/nvidia-device-api/db.sqlite\"). "+
 			"If using a file, the path must be absolute.")
 	storageFs.IntVar(&o.DatabaseMaxOpenConns, "database-max-open-connections", o.DatabaseMaxOpenConns,
 		"The maximum number of open connections to the backend database. Set to 0 or less for unlimited.")
@@ -121,24 +120,7 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	}
 
 	if o.DatabasePath == "" {
-		o.DatabasePath = IN_MEMORY
-	}
-
-	if o.DatabasePath == IN_MEMORY {
-		o.DatabaseDir = "/tmp"
-
-		v := url.Values{}
-		v.Set("cache", "shared")
-		v.Set("_journal_mode", "WAL")
-		v.Set("_synchronous", "OFF")
-		v.Set("_busy_timeout", "5000")
-		v.Set("_foreign_keys", "ON")
-		v.Set("_temp_store", "MEMORY")
-		v.Set("_cache_size", "-4096")
-		v.Set("_page_size", "16384")
-		v.Set("_txlock", "immediate")
-
-		o.KineConfig.Endpoint = fmt.Sprintf("sqlite://%s?%s", IN_MEMORY, v.Encode())
+		o.DatabasePath = defaultDatabasePath
 	}
 
 	if o.DatabaseDir == "" {
@@ -148,10 +130,15 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	if o.KineConfig.Endpoint == "" {
 		v := url.Values{}
 		v.Set("_journal_mode", "WAL")
-		v.Set("_busy_timeout", "5000")
 		v.Set("_synchronous", "NORMAL")
-		v.Set("_foreign_keys", "ON")
 		v.Set("_txlock", "immediate")
+		v.Set("_busy_timeout", "30000")
+		v.Set("_foreign_keys", "ON")
+		v.Set("_locking_mode", "NORMAL")
+		v.Set("_temp_store", "MEMORY")
+		v.Set("_cache_size", "-32000")  // 32MB
+		v.Set("_mmap_size", "33554432") // 32MB
+		v.Set("_page_size", "4096")
 
 		o.KineConfig.Endpoint = fmt.Sprintf("sqlite://%s?%s", o.DatabasePath, v.Encode())
 	}
@@ -159,7 +146,7 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	o.KineConfig.ConnectionPoolConfig.MaxOpen = o.DatabaseMaxOpenConns
 
 	if o.DatabaseMaxIdleConns == 0 {
-		// In database/sql, MaxIdleConns 0 defaults to 2; set to negative to disable connection pooling.
+		// In database/sql, MaxIdleConns 0 defaults to 5; set to negative to disable connection pooling.
 		o.KineConfig.ConnectionPoolConfig.MaxIdle = -1
 	} else {
 		o.KineConfig.ConnectionPoolConfig.MaxIdle = o.DatabaseMaxIdleConns
@@ -210,7 +197,7 @@ func (o *Options) Validate() []error {
 	if o.DatabasePath == "" {
 		allErrors = append(allErrors, fmt.Errorf("--database-path: required"))
 	}
-	if o.DatabasePath != IN_MEMORY && !filepath.IsAbs(o.DatabasePath) {
+	if !filepath.IsAbs(o.DatabasePath) {
 		allErrors = append(allErrors, fmt.Errorf("--database-path %q: must be an absolute path", o.DatabasePath))
 	}
 
@@ -234,8 +221,8 @@ func (o *Options) Validate() []error {
 		}
 	}
 
-	if o.DatabaseMaxOpenConns > 10 {
-		allErrors = append(allErrors, fmt.Errorf("--database-max-open-connections: %v must be 10 or less", o.DatabaseMaxOpenConns))
+	if o.DatabaseMaxOpenConns < 2 {
+		allErrors = append(allErrors, fmt.Errorf("--database-max-open-connections: %v must be 2 or greater", o.DatabaseMaxOpenConns))
 	}
 
 	if o.DatabaseMaxIdleConns > o.DatabaseMaxOpenConns && o.DatabaseMaxOpenConns > 0 {

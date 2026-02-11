@@ -190,12 +190,12 @@ func TestValidate(t *testing.T) {
 			errContains: "must be an absolute path",
 		},
 		{
-			name: "Database max open connections ceiling",
+			name: "Database max open connections floor",
 			modify: func(o *Options) {
-				o.DatabaseMaxOpenConns = 11
+				o.DatabaseMaxOpenConns = 1
 			},
 			wantErr:     true,
-			errContains: "must be 10 or less",
+			errContains: "must be 2 or greater",
 		},
 		{
 			name: "Database max idle conns cannot exceed max open conns",

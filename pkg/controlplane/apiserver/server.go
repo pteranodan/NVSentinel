@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 	"sync"
 	"time"
@@ -236,6 +237,13 @@ func (s *DeviceAPIServer) serveMetrics(ctx context.Context) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{}))
 	mux.Handle("/version", version.Handler())
+
+	// TODO: remove
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	metricsSrv := &http.Server{
 		Addr:              s.MetricsAddress,

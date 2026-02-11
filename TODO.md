@@ -5,11 +5,16 @@
 ### General
 
 - [ ] **OSRB**
+- [ ] **system design doc**
+- [ ] implement UpdateStatus
+- [ ] implement Patch
 - [x] standardize project layout
 - [x] trim down / consolidate docs
+- [ ] standard conditions
 - [ ] development.md
 - [ ] **Go type as single-source-of-truth**
 - [ ] internal superset type
+- [ ] proto service-gen
 - [ ] api validation
 - [ ] discovery api
     - *removes the need for users to provide a RESTMapper to controller-runtime manager*
@@ -18,7 +23,7 @@
 
 ### Server
 
-- [ ] **design doc**
+- [x] **design doc**
 - [ ] **auth interceptor**
 - [ ] validation interceptor
 - [ ] **audit logs**
@@ -28,31 +33,26 @@
 - [x] version metric
 - [x] version endpoint
 - [ ] datastore
-  - [ ] ?additional Kine compaction control?
-  - [ ] ?additional SQLite compaction control?
-  - [ ] ?export db size metric?
+  - [ ] in-memory
   - [ ] ?server-side cache?
 - [ ] service-gen
-  - [ ] ?fake server?
-- [ ] deployment
-  - [ ] image
-  - [ ] helm chart
+- [x] deployment
+  - [x] image
+  - [x] helm chart
   - [ ] publish
-  - [ ] docs
+  - [x] docs
 - [x] unit tests
-- [ ] integration tests
+- [x] integration tests
 - [ ] performance tests
+- [ ] scale tests
 
 ---
 
 ### Client
 
 - [ ] client-gen
-  - [ ] discovery api
-  - [ ] **implement updateStatus template**
-  - [ ] **implement patch template**
   - [ ] ?aggregated clientset w/ standard k8s clientset?
-- [ ] integration tests
+- [x] integration tests
 - [ ] ?add version to request header?
 
 ---

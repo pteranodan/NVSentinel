@@ -24,7 +24,7 @@ SHELL = /usr/bin/env bash -o pipefail
 VERSION_PKG = github.com/nvidia/nvsentinel/pkg/util/version
 GIT_VERSION := $(shell git describe --tags --always --dirty)
 GIT_COMMIT  := $(shell git rev-parse HEAD)
-BUILD_DATE  := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+BUILD_DATE  := $(shell git --no-pager log -1 --format=%ct)
 DOCKER_IMAGE ?= nvidia-device-apiserver:latest
 
 LDFLAGS := -X $(VERSION_PKG).GitVersion=$(GIT_VERSION) \
@@ -68,7 +68,7 @@ tidy: ## Run go mod tidy
 
 .PHONY: build
 build: ## Build the device-apiserver binary.
-	go build -ldflags "$(LDFLAGS)" -o bin/device-apiserver ./cmd/device-apiserver
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/device-apiserver ./cmd/device-apiserver
 
 .PHONY: docker-build
 docker-build: ## Build docker image with build-time metadata.
@@ -80,11 +80,11 @@ docker-build: ## Build docker image with build-time metadata.
 
 .PHONY: test
 test: ## Run unit tests.
-	GOTOOLCHAIN=go1.25.5+auto go test -v $$(go list ./... | grep -vE '/pkg/client-go/(client|informers|listers)|/internal/generated/|/test/integration/|/examples/') -cover cover.out
+	GOTOOLCHAIN=go1.25.5+auto go test -trimpath -v $$(go list ./... | grep -vE '/pkg/client-go/(client|informers|listers)|/internal/generated/|/test/integration/|/examples/') -cover cover.out
 
 .PHONY: test-integration
 test-integration: ## Run integration tests.
-	go test -v ./test/integration/...
+	go test -trimpath -v ./test/integration/...
 
 .PHONY: lint
 lint: ## Run golangci-lint.

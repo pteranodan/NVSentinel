@@ -110,6 +110,15 @@ func (c *fakeGPUs) Update(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.
 	return obj.(*devicev1alpha1.GPU), err
 }
 
+func (c *fakeGPUs) UpdateStatus(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(c.Resource(), "status", gPU, opts), &devicev1alpha1.GPU{})
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*devicev1alpha1.GPU), err
+}
+
 // Delete takes name of the gPU and deletes it. Returns an error if one occurs.
 func (c *fakeGPUs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
