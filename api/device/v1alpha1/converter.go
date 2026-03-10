@@ -15,7 +15,7 @@
 package v1alpha1
 
 import (
-	pb "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
+	pb "github.com/nvidia/nvsentinel/internal/generated/proto/device/v1alpha1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -53,17 +53,6 @@ type Converter interface {
 	ToProtobufList(source *GPUList) *pb.GpuList
 
 	// FromProtobufObjectMeta converts a protobuf ObjectMeta into a metav1.ObjectMeta object.
-	//
-	// The following fields are intentionally excluded from the proto API:
-	// - DeletionTimestamp/GracePeriodSeconds: Managed by server-side deletion logic
-	// - Labels/Annotations: Not needed for device-level proto API; K8s controllers
-	//   should use the native K8s API for label/annotation management
-	// - OwnerReferences/Finalizers: Not exposed in proto to prevent external
-	//   controllers from creating dependency chains via the device API
-	// - ManagedFields/SelfLink: Server-managed metadata, not user-facing
-	//
-	// If labels/annotations support is needed in the future, add them to the
-	// proto ObjectMeta definition and remove the goverter:ignore directives.
 	//
 	// goverter:map Uid UID
 	// goverter:ignore GenerateName DeletionTimestamp DeletionGracePeriodSeconds
@@ -108,13 +97,43 @@ type Converter interface {
 	// FromProtobufCondition converts a protobuf Condition message into a metav1.Condition object.
 	//
 	// goverter:ignore ObservedGeneration
-	// Note: ObservedGeneration is specific to k8s and not found in the protobuf Condition message.
 	FromProtobufCondition(source *pb.Condition) metav1.Condition
 
 	// ToProtobufCondition converts a metav1.Condition object into a protobuf Condition message.
 	//
 	// goverter:ignore state sizeCache unknownFields
 	ToProtobufCondition(source metav1.Condition) *pb.Condition
+
+	// ToProtobufGetOptions converts a metav1.GetOptions object into a protobuf GetOptions message.
+	//
+	// goverter:ignore state sizeCache unknownFields
+	ToProtobufGetOptions(source metav1.GetOptions) *pb.GetOptions
+
+	// ToProtobufUpdateOptions converts a metav1.UpdateOptions object into a protobuf UpdateOptions message.
+	//
+	// goverter:ignore state sizeCache unknownFields
+	ToProtobufUpdateOptions(source metav1.UpdateOptions) *pb.UpdateOptions
+
+	// ToProtobufListOptions converts a metav1.ListOptions object into a protobuf ListOptions message.
+	//
+	// goverter:ignore state sizeCache unknownFields
+	ToProtobufListOptions(source metav1.ListOptions) *pb.ListOptions
+
+	// ToProtobufDeleteOptions maps a metav1.DeleteOptions object into a protobuf DeleteOptions message.
+	//
+	// goverter:ignore state sizeCache unknownFields
+	ToProtobufDeleteOptions(source metav1.DeleteOptions) *pb.DeleteOptions
+
+	// ToProtobufPreconditions maps a metav1.Preconditions object into a protobuf Preconditions message.
+	//
+	// goverter:map UID Uid
+	// goverter:ignore state sizeCache unknownFields
+	ToProtobufPreconditions(source *metav1.Preconditions) *pb.Preconditions
+
+	// ToProtobufPatchOptions maps a metav1.PatchOptions object in to a protobuf PatchOptions message.
+	//
+	// goverter:ignore state sizeCache unknownFields
+	ToProtobufPatchOptions(source metav1.PatchOptions) *pb.PatchOptions
 }
 
 // FromProtobufTypeMeta generates the standard TypeMeta for the root GPU resource.

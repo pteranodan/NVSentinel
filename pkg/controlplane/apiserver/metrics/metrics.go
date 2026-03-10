@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
+	kinemetrics "github.com/k3s-io/kine/pkg/metrics"
 	"github.com/nvidia/nvsentinel/pkg/version"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
@@ -42,7 +43,7 @@ func (m *ServerMetrics) WithBuildInfo(info version.Info) *ServerMetrics {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.buildInfoLabels = prometheus.Labels{
-		"version":    info.Version,
+		"version":    info.GitVersion,
 		"revision":   info.GitCommit,
 		"build_date": info.BuildDate,
 		"goversion":  info.GoVersion,
@@ -81,6 +82,23 @@ func (m *ServerMetrics) Register() {
 
 		if err := m.Registry.Register(m.ServiceHealthStatus); err != nil {
 			klog.ErrorS(err, "Failed to register service health metrics")
+		}
+
+		// Kine SQL metrics
+		if err := m.Registry.Register(kinemetrics.SQLTotal); err != nil {
+			klog.ErrorS(err, "Failed to register kine_sql_total metric")
+		}
+
+		if err := m.Registry.Register(kinemetrics.SQLTime); err != nil {
+			klog.ErrorS(err, "Failed to register kine_sql_time_seconds metric")
+		}
+
+		if err := m.Registry.Register(kinemetrics.CompactTotal); err != nil {
+			klog.ErrorS(err, "Failed to register kine_compact_total metric")
+		}
+
+		if err := m.Registry.Register(kinemetrics.InsertErrorsTotal); err != nil {
+			klog.ErrorS(err, "Failed to register kine_insert_errors_total metric")
 		}
 
 		m.mu.Lock()

@@ -57,7 +57,7 @@ func main() {
 	// Initialize the versioned Clientset using the gRPC transport.
 	config := &client.Config{Target: target}
 
-	clientset, err := versioned.NewForConfig(config)
+	clientset, err := versioned.NewForConfig(context.TODO(), config)
 	if err != nil {
 		setupLog.Error(err, "unable to create clientset")
 		os.Exit(1)

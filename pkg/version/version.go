@@ -1,6 +1,6 @@
 // Copyright (c) 2026-2026, NVIDIA CORPORATION.  All rights reserved.
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed under the Apache License, GitVersion 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -25,8 +25,8 @@ import (
 
 // Build information set at compile time via -ldflags.
 var (
-	// Version is the semantic version of the build.
-	Version = "dev"
+	// GitVersion is the semantic version of the build.
+	GitVersion = "v0.0.0-dev"
 
 	// GitCommit is the git commit SHA at build time.
 	GitCommit = "unknown"
@@ -40,7 +40,7 @@ var (
 
 // Info contains version information.
 type Info struct {
-	Version      string `json:"version"`
+	GitVersion   string `json:"gitVersion"`
 	GitCommit    string `json:"gitCommit"`
 	GitTreeState string `json:"gitTreeState"`
 	BuildDate    string `json:"buildDate"`
@@ -51,8 +51,9 @@ type Info struct {
 
 // Get returns the version information.
 func Get() Info {
+	// These variables come from -ldflags settings.
 	return Info{
-		Version:      Version,
+		GitVersion:   GitVersion,
 		GitCommit:    GitCommit,
 		GitTreeState: GitTreeState,
 		BuildDate:    BuildDate,
@@ -62,28 +63,13 @@ func Get() Info {
 	}
 }
 
-// String returns version information as a human-readable string.
 func (i Info) String() string {
-	return fmt.Sprintf(
-		"Version: %s\nGit Commit: %s\nGit Tree State: %s\nBuild Date: %s\nGo Version: %s\nCompiler: %s\nPlatform: %s",
-		i.Version,
-		i.GitCommit,
-		i.GitTreeState,
-		i.BuildDate,
-		i.GoVersion,
-		i.Compiler,
-		i.Platform,
-	)
-}
-
-// Short returns a short version string.
-func (i Info) Short() string {
-	return fmt.Sprintf("%s (%s)", i.Version, i.GitCommit)
+	return i.GitVersion
 }
 
 // UserAgent returns the standard user agent string for clients.
 func UserAgent() string {
-	return fmt.Sprintf("nvidia-device-api/%s (%s)", Version, Get().Platform)
+	return fmt.Sprintf("nvidia-device-api/%s (%s)", GitVersion, Get().Platform)
 }
 
 // Handler returns an HTTP handler that responds with version information as JSON.

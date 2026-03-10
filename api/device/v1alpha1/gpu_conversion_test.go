@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	pb "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
+	pb "github.com/nvidia/nvsentinel/internal/generated/proto/device/v1alpha1"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -43,6 +43,8 @@ func TestGPUConversion_Nil(t *testing.T) {
 }
 
 func TestGPUConversion(t *testing.T) {
+	observedGeneration := int64(0)
+	recommendedAction := "ResetGPU"
 
 	protoIn := &pb.Gpu{
 		Metadata: &pb.ObjectMeta{
@@ -57,12 +59,13 @@ func TestGPUConversion(t *testing.T) {
 				{
 					Type:               "Ready",
 					Status:             "False",
+					ObservedGeneration: &observedGeneration,
 					LastTransitionTime: timestamppb.New(lastTransitionTime),
 					Reason:             "DriverCrash",
 					Message:            "The driver has stopped responding.",
 				},
 			},
-			RecommendedAction: "ResetGPU",
+			RecommendedAction: &recommendedAction,
 		},
 	}
 
@@ -88,6 +91,10 @@ func TestGPUConversion(t *testing.T) {
 }
 
 func TestGPUListConversion(t *testing.T) {
+	observedGeneration := int64(0)
+	none := ""
+	rebootNode := "RebootNode"
+
 	protoIn := &pb.GpuList{
 		Metadata: &pb.ListMeta{
 			ResourceVersion: "2",
@@ -106,11 +113,13 @@ func TestGPUListConversion(t *testing.T) {
 						{
 							Type:               "Ready",
 							Status:             "True",
+							ObservedGeneration: &observedGeneration,
 							LastTransitionTime: timestamppb.New(lastTransitionTime),
 							Reason:             "DriverReady",
 							Message:            "Driver is posting ready status.",
 						},
 					},
+					RecommendedAction: &none,
 				},
 			},
 			{
@@ -126,12 +135,13 @@ func TestGPUListConversion(t *testing.T) {
 						{
 							Type:               "HardwareFailure",
 							Status:             "True",
+							ObservedGeneration: &observedGeneration,
 							LastTransitionTime: timestamppb.New(lastTransitionTime.Add(1 * time.Minute)),
 							Reason:             "DoubleBitECCError",
 							Message:            "Double Bit ECC error detected.",
 						},
 					},
-					RecommendedAction: "RebootNode",
+					RecommendedAction: &rebootNode,
 				},
 			},
 		},

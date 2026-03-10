@@ -41,7 +41,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	pb "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
+	pb "github.com/nvidia/nvsentinel/internal/generated/proto/device/v1alpha1"
 	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 )
 

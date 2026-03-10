@@ -91,7 +91,7 @@ func main() {
 	// Initialize the underlying gRPC connection manually.
 	config := &client.Config{Target: target}
 
-	conn, err := client.ClientConnFor(config, opts...)
+	conn, err := client.ClientConnFor(context.TODO(), config, opts...)
 	if err != nil {
 		logger.Error(err, "unable to connect to gRPC target")
 		os.Exit(1)

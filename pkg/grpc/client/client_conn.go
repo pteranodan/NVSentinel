@@ -15,7 +15,9 @@
 package client
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -24,7 +26,7 @@ import (
 )
 
 // ClientConnFor creates a new gRPC connection using the provided configuration and options.
-func ClientConnFor(config *Config, opts ...DialOption) (*grpc.ClientConn, error) {
+func ClientConnFor(ctx context.Context, config *Config, opts ...DialOption) (*grpc.ClientConn, error) {
 	cfg := *config // Shallow copy to avoid mutation
 
 	dOpts := &dialOptions{}
@@ -40,24 +42,31 @@ func ClientConnFor(config *Config, opts ...DialOption) (*grpc.ClientConn, error)
 		return nil, err
 	}
 
-	// Insecure credentials are only safe over Unix domain sockets.
-	// TLS is required for non-UDS targets (dns:, passthrough:).
-	if !strings.HasPrefix(cfg.Target, "unix://") && !strings.HasPrefix(cfg.Target, "unix:") {
-		return nil, fmt.Errorf(
-			"insecure credentials require unix:// target, got %q; TLS is required for non-UDS targets",
-			cfg.Target,
-		)
-	}
-
 	logger := cfg.GetLogger()
 
 	grpcOpts := []grpc.DialOption{
 		grpc.WithUserAgent(cfg.UserAgent),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", strings.TrimPrefix(cfg.Target, "unix://"))
+		}),
+		grpc.WithDefaultServiceConfig(`{
+            "methodConfig": [{
+                "name": [{"service": ""}], 
+				"waitForReady": true,
+                "retryPolicy": {
+                    "maxAttempts": 5,
+                    "initialBackoff": "0.1s",
+                    "maxBackoff": "1s",
+                    "backoffMultiplier": 2.0,
+                    "retryableStatusCodes": ["UNAVAILABLE"]
+                }
+            }]
+        }`),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                DefaultKeepAliveTime,
 			Timeout:             DefaultKeepAliveTimeout,
-			PermitWithoutStream: true, // Allow keepalive pings even with no active RPCs.
+			PermitWithoutStream: false,
 		}),
 	}
 
@@ -79,6 +88,11 @@ func ClientConnFor(config *Config, opts ...DialOption) (*grpc.ClientConn, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gRPC client for %s: %w", cfg.Target, err)
 	}
+
+	go func() {
+		<-ctx.Done()
+		conn.Close()
+	}()
 
 	return conn, nil
 }

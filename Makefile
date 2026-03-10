@@ -1,4 +1,4 @@
-# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,9 @@
 
 # Main Makefile for NVIDIA Device API
 
+GOAL := $(firstword $(MAKECMDGOALS))
+ARGS := $(filter-out $(GOAL),$(MAKECMDGOALS))
+
 # ==============================================================================
 # Configuration
 # ==============================================================================
@@ -21,35 +24,23 @@
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-# Go build settings
-GOOS ?= $(shell go env GOOS)
-GOARCH ?= $(shell go env GOARCH)
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-GIT_TREE_STATE ?= $(shell if git diff --quiet 2>/dev/null; then echo "clean"; else echo "dirty"; fi)
-BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+# TODO: remove this now?
+VERSION_PKG = github.com/nvidia/nvsentinel/pkg/util/version
+GIT_VERSION := $(shell git describe --tags --always --dirty)
+GIT_COMMIT  := $(shell git rev-parse HEAD)
+BUILD_DATE  := $(shell git --no-pager log -1 --format=%ct)
+DOCKER_IMAGE ?= ghcr.io/nvidia/device-apiserver:latest
 
-# Version package path for ldflags
-VERSION_PKG = github.com/nvidia/nvsentinel/pkg/version
-
-# Container settings
-CONTAINER_RUNTIME ?= docker
-IMAGE_REGISTRY ?= ghcr.io/nvidia/nvsentinel
-DOCKERFILE := deployments/container/Dockerfile
-
-# Linker flags
-LDFLAGS = -s -w \
-	-X $(VERSION_PKG).Version=$(VERSION) \
-	-X $(VERSION_PKG).GitCommit=$(GIT_COMMIT) \
-	-X $(VERSION_PKG).GitTreeState=$(GIT_TREE_STATE) \
-	-X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
+LDFLAGS := -X $(VERSION_PKG).GitVersion=$(GIT_VERSION) \
+           -X $(VERSION_PKG).GitCommit=$(GIT_COMMIT) \
+           -X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
 
 # ==============================================================================
 # Targets
 # ==============================================================================
 
 .PHONY: all
-all: code-gen test build ## Run code generation, test, and build for all modules.
+all: code-gen test build ## Run code generation, test, and build for all.
 
 ##@ General
 
@@ -61,146 +52,37 @@ help: ## Display this help.
 
 .PHONY: code-gen
 code-gen: ## Run code generation.
-	./hack/update-codegen.sh
-	go mod tidy
+	@./hack/update-codegen.sh
 
-.PHONY: verify-codegen
-verify-codegen: code-gen ## Verify generated code is up-to-date.
-	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "ERROR: Generated code is out of date. Run 'make code-gen'."; \
-		git status --porcelain; \
-		git --no-pager diff; \
-		exit 1; \
-	fi
-
-##@ Build
+##@ Build & Test
 
 .PHONY: build
-build: build-modules build-server ## Build all modules and server.
+build: ## Build targets. Usage: make build [target]
+	@./hack/build.sh $(ARGS)
 
-.PHONY: build-modules
-build-modules: ## Build all modules.
-	@for mod in $(MODULES); do \
-		if [ -f $$mod/Makefile ]; then \
-			$(MAKE) -C $$mod build; \
-		fi \
-	done
-
-.PHONY: build-server
-build-server: ## Build the Device API Server
-	@echo "Building device-api-server..."
-	@mkdir -p bin
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
-		-ldflags "$(LDFLAGS)" \
-		-o bin/device-api-server \
-		./cmd/device-api-server
-	@echo "Built bin/device-api-server"
-
-.PHONY: build-nvml-provider
-build-nvml-provider: ## Build the NVML Provider sidecar (requires CGO)
-	@echo "Building nvml-provider..."
-	@mkdir -p bin
-	CGO_ENABLED=1 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
-		-tags=nvml \
-		-ldflags "$(LDFLAGS)" \
-		-o bin/nvml-provider \
-		./cmd/nvml-provider
-	@echo "Built bin/nvml-provider"
-
-##@ Testing
+.PHONY: image
+image: ## Build container images. Usage: make image [target]
+	@./hack/image.sh $(ARGS)
 
 .PHONY: test
-test: test-modules test-server ## Run tests in all modules.
-
-.PHONY: test-modules
-test-modules: ## Run tests in all modules.
-	@for mod in $(MODULES); do \
-		if [ -f $$mod/Makefile ]; then \
-			$(MAKE) -C $$mod test; \
-		fi \
-	done
-
-.PHONY: test-server
-test-server: ## Run server tests only
-	go test -race -v ./pkg/...
+test: ## Run unit tests. Usage: make test [target]
+	@./hack/test.sh $(ARGS)
 
 .PHONY: test-integration
-test-integration: ## Run integration tests
-	go test -v ./test/integration/...
+test-integration: ## Run integration tests. Usage: make test-integration [target]
+	@./hack/test.sh --integration $(ARGS)
 
-##@ Linting
+.PHONY: query
+query: ## List available targets. Usage: make query TYPE=[build,image,test,integration]
+	@./hack/query.sh $(TYPE)
 
-.PHONY: lint
-lint: ## Run linting on all modules.
-	@for mod in $(MODULES); do \
-		if [ -f $$mod/Makefile ]; then \
-			$(MAKE) -C $$mod lint; \
-		fi \
-	done
-	go vet ./...
-
-##@ Container Images
-
-.PHONY: docker-build
-docker-build: docker-build-server docker-build-nvml-provider ## Build all container images
-
-.PHONY: docker-build-server
-docker-build-server: ## Build device-api-server container image
-	$(CONTAINER_RUNTIME) build \
-		--target device-api-server \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
-		--build-arg GIT_TREE_STATE=$(GIT_TREE_STATE) \
-		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		-t $(IMAGE_REGISTRY)/device-api-server:$(VERSION) \
-		-f $(DOCKERFILE) .
-
-.PHONY: docker-build-nvml-provider
-docker-build-nvml-provider: ## Build nvml-provider container image
-	$(CONTAINER_RUNTIME) build \
-		--target nvml-provider \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
-		--build-arg GIT_TREE_STATE=$(GIT_TREE_STATE) \
-		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		-t $(IMAGE_REGISTRY)/nvml-provider:$(VERSION) \
-		-f $(DOCKERFILE) .
-
-.PHONY: docker-push
-docker-push: ## Push all container images
-	$(CONTAINER_RUNTIME) push $(IMAGE_REGISTRY)/device-api-server:$(VERSION)
-	$(CONTAINER_RUNTIME) push $(IMAGE_REGISTRY)/nvml-provider:$(VERSION)
-
-##@ Helm
-
-.PHONY: helm-lint
-helm-lint: ## Lint Helm chart
-	helm lint deployments/helm/device-api-server
-
-.PHONY: helm-template
-helm-template: ## Render Helm chart templates
-	helm template device-api-server deployments/helm/device-api-server
-
-.PHONY: helm-package
-helm-package: ## Package Helm chart
-	@mkdir -p dist/
-	helm package deployments/helm/device-api-server -d dist/
-
-##@ Cleanup
+.PHONY: verify
+verify: ## Run golangci-lint on changed files only.
+	@./hack/verify-golangci-lint.sh
 
 .PHONY: clean
-clean: ## Clean generated artifacts in all modules.
-	@for mod in $(MODULES); do \
-		if [ -f $$mod/Makefile ]; then \
-			$(MAKE) -C $$mod clean; \
-		fi \
-	done
-	rm -rf bin/
+clean: ## Remove generated artifacts.
+	@./hack/clean.sh
 
-.PHONY: tidy
-tidy: ## Run go mod tidy on all modules.
-	@for mod in $(MODULES); do \
-		echo "Tidying $$mod..."; \
-		(cd $$mod && go mod tidy); \
-	done
-	go mod tidy
+$(ARGS)::
+	@:

@@ -36,6 +36,7 @@ func NewLatencyUnaryInterceptor(logger logr.Logger) grpc.UnaryClientInterceptor 
 		code := s.Code()
 		kv := []interface{}{
 			"grpc.method", method,
+			"grpc.target", cc.Target(),
 			"duration", duration,
 			"code", int(code),
 		}
@@ -46,8 +47,7 @@ func NewLatencyUnaryInterceptor(logger logr.Logger) grpc.UnaryClientInterceptor 
 				return err
 			}
 
-			logger.V(4).Info("RPC error details", "error", err)
-			logger.Error(nil, "RPC failed", kv...)
+			logger.Error(err, "RPC failed", kv...)
 
 			return err
 		}
@@ -72,6 +72,7 @@ func NewLatencyStreamInterceptor(logger logr.Logger) grpc.StreamClientIntercepto
 		code := s.Code()
 		kv := []interface{}{
 			"grpc.method", method,
+			"grpc.target", cc.Target(),
 			"duration", duration,
 			"code", int(code),
 		}
@@ -82,8 +83,7 @@ func NewLatencyStreamInterceptor(logger logr.Logger) grpc.StreamClientIntercepto
 				return stream, err
 			}
 
-			logger.V(4).Info("Stream error details", "error", err)
-			logger.Error(nil, "Stream establishment failed", kv...)
+			logger.Error(err, "Stream establishment failed", kv...)
 
 			return stream, err
 		}

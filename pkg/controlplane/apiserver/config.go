@@ -15,24 +15,22 @@
 package apiserver
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
-
-	"google.golang.org/grpc"
-
-	"k8s.io/apiserver/pkg/storage/storagebackend"
-	"k8s.io/component-base/logs"
-	logsapi "k8s.io/component-base/logs/api/v1"
 
 	"github.com/nvidia/nvsentinel/pkg/controlplane/apiserver/api"
 	"github.com/nvidia/nvsentinel/pkg/controlplane/apiserver/metrics"
 	"github.com/nvidia/nvsentinel/pkg/controlplane/apiserver/options"
 	"github.com/nvidia/nvsentinel/pkg/controlplane/apiserver/registry"
 	"github.com/nvidia/nvsentinel/pkg/version"
+	"google.golang.org/grpc"
+	"k8s.io/apiserver/pkg/storage/storagebackend"
+	"k8s.io/component-base/logs"
+	logsapi "k8s.io/component-base/logs/api/v1"
 )
 
+// Config defines the configuration for the server.
 type Config struct {
 	NodeName             string
 	BindAddress          string
@@ -40,11 +38,12 @@ type Config struct {
 	ServiceMonitorPeriod time.Duration
 	MetricsAddress       string
 	ShutdownGracePeriod  time.Duration
+	PprofAddress         string
 
 	ServerOptions    []grpc.ServerOption
 	ServerMetrics    *metrics.ServerMetrics
-	StorageConfig    storagebackend.Config
 	ServiceProviders []api.ServiceProvider
+	Storage          storagebackend.Config
 	LogOptions       *logs.Options
 }
 
@@ -52,24 +51,37 @@ type CompletedConfig struct {
 	*Config
 }
 
-func NewConfig(ctx context.Context, opts options.CompletedOptions) (*Config, error) {
+// NewConfig creates a new Server Config object with the given options.
+func NewConfig(opts options.CompletedOptions) (*Config, error) {
+	if opts.Storage.Etcd == nil {
+		return nil, fmt.Errorf("storage.etcd: required")
+	}
+
 	serverMetrics := metrics.DefaultServerMetrics.WithBuildInfo(version.Get())
 	serverMetrics.Register()
 
+	pprofAddr := ""
+	if opts.EnablePprof {
+		pprofAddr = opts.PprofAddress
+	}
+
 	config := &Config{
 		NodeName:             opts.NodeName,
+		BindAddress:          opts.BindAddress,
 		HealthAddress:        opts.HealthAddress,
 		ServiceMonitorPeriod: opts.ServiceMonitorPeriod,
 		MetricsAddress:       opts.MetricsAddress,
 		ShutdownGracePeriod:  opts.ShutdownGracePeriod,
-		ServerOptions:        []grpc.ServerOption{},
+		PprofAddress:         pprofAddr,
+		ServerOptions:        opts.Server,
 		ServerMetrics:        serverMetrics,
+		Storage:              opts.Storage.Etcd.StorageConfig,
 		LogOptions:           opts.Logs,
 	}
 
 	config.ServiceProviders = append(config.ServiceProviders, registry.List()...)
 	if len(config.ServiceProviders) == 0 {
-		return nil, fmt.Errorf("no API services were discovered; at least one is required")
+		return nil, fmt.Errorf("service discovery: no providers registered")
 	}
 
 	config.ServerOptions = append(config.ServerOptions,
@@ -81,14 +93,6 @@ func NewConfig(ctx context.Context, opts options.CompletedOptions) (*Config, err
 		if !strings.Contains(err.Error(), "already applied") {
 			return nil, fmt.Errorf("failed to apply logging configuration: %w", err)
 		}
-	}
-
-	if err := opts.GRPC.ApplyTo(&config.BindAddress, &config.ServerOptions); err != nil {
-		return nil, fmt.Errorf("failed to apply grpc options: %w", err)
-	}
-
-	if err := opts.Storage.ApplyTo(&config.StorageConfig); err != nil {
-		return nil, fmt.Errorf("failed to apply storage options: %w", err)
 	}
 
 	return config, nil

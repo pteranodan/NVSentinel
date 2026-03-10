@@ -21,12 +21,13 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	nvvalidation "github.com/nvidia/nvsentinel/pkg/util/validation"
 	"github.com/nvidia/nvsentinel/pkg/version"
 )
 
 const (
-	// NvidiaDeviceAPITargetEnvVar is the environment variable that overrides the gRPC target.
-	NvidiaDeviceAPITargetEnvVar = "NVIDIA_DEVICE_API_TARGET"
+	// NvidiaDeviceAPIEnvVar is the environment variable that overrides the gRPC target.
+	NvidiaDeviceAPIEnvVar = "NVIDIA_DEVICE_API"
 
 	// DefaultNvidiaDeviceAPISocket is the default Unix domain socket path.
 	DefaultNvidiaDeviceAPISocket = "unix:///var/run/nvidia-device-api/device-api.sock"
@@ -52,7 +53,7 @@ type Config struct {
 // Default populates unset fields in the Config with default values.
 func (c *Config) Default() {
 	if c.Target == "" {
-		c.Target = os.Getenv(NvidiaDeviceAPITargetEnvVar)
+		c.Target = os.Getenv(NvidiaDeviceAPIEnvVar)
 	}
 
 	if c.Target == "" {
@@ -71,17 +72,15 @@ func (c *Config) Default() {
 // Validate checks if the Config is valid and returns an error if not.
 func (c *Config) Validate() error {
 	if c.Target == "" {
-		return fmt.Errorf("gRPC target address is required; verify %s is not empty", NvidiaDeviceAPITargetEnvVar)
-	}
-
-	// Validate target scheme
-	if !strings.HasPrefix(c.Target, "unix://") && !strings.HasPrefix(c.Target, "unix:") &&
-		!strings.HasPrefix(c.Target, "dns:") && !strings.HasPrefix(c.Target, "passthrough:") {
-		return fmt.Errorf("gRPC target %q must use unix://, dns:, or passthrough: scheme", c.Target)
+		return fmt.Errorf("target: required")
+	} else {
+		if validationErrors := nvvalidation.IsUnixSocketURI(c.Target); len(validationErrors) > 0 {
+			return fmt.Errorf("target %q: %s", c.Target, strings.Join(validationErrors, ", "))
+		}
 	}
 
 	if c.UserAgent == "" {
-		return fmt.Errorf("user-agent cannot be empty")
+		return fmt.Errorf("user-agent: required")
 	}
 
 	return nil

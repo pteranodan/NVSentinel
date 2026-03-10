@@ -1,0 +1,16 @@
+apiVersion: v2
+name: device-api
+description: Umbrella chart for NVIDIA Device API
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: device-apiserver
+    version: "0.1.0"
+    repository: "file://../device-apiserver"
+    condition: device-apiserver.enabled
+  - name: nvml-provider
+    version: "0.1.0"
+    repository: "file://../nvml-provider"
+    condition: nvml-provider.enabled

@@ -35,7 +35,6 @@ type GPUSpec struct {
 // +k8s:deepcopy-gen=true
 type GPUStatus struct {
 	// Conditions is an array of current gpu conditions.
-	//
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
@@ -49,7 +48,6 @@ type GPUStatus struct {
 //
 // +genclient
 // +genclient:nonNamespaced
-// +genclient:onlyVerbs=get,list,watch,create,update,updateStatus,delete
 // +k8s:deepcopy-gen=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type GPU struct {
