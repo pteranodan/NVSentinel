@@ -21,10 +21,13 @@ import (
 
 	logr "github.com/go-logr/logr"
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	pb "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
+	pb "github.com/nvidia/nvsentinel/internal/generated/proto/device/v1alpha1"
 	client "github.com/nvidia/nvsentinel/pkg/grpc/client"
+	errors "github.com/nvidia/nvsentinel/pkg/grpc/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
+	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 )
 
@@ -36,13 +39,14 @@ type GPUsGetter interface {
 
 // GPUInterface has methods to work with GPU resources.
 type GPUInterface interface {
-	Create(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.CreateOptions) (*devicev1alpha1.GPU, error)
-	Update(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error)
-	UpdateStatus(ctx context.Context, gPU *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error)
+	Create(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.CreateOptions) (*devicev1alpha1.GPU, error)
+	Update(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error)
+	UpdateStatus(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	Get(ctx context.Context, name string, opts v1.GetOptions) (*devicev1alpha1.GPU, error)
 	List(ctx context.Context, opts v1.ListOptions) (*devicev1alpha1.GPUList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (*devicev1alpha1.GPU, error)
 	GPUExpansion
 }
 
@@ -60,29 +64,29 @@ func newGPUs(c *DeviceV1alpha1Client) *gpus {
 	}
 }
 
-func (c *gpus) getNamespace() string {
+func (c *gpus) getNamespace() *string {
+	ns := ""
 	if c == nil {
-		return ""
+		return &ns
 	}
-	return ""
+	return &ns
 }
 
 func (c *gpus) Get(ctx context.Context, name string, opts v1.GetOptions) (*devicev1alpha1.GPU, error) {
 	resp, err := c.client.GetGpu(ctx, &pb.GetGpuRequest{
 		Name:      name,
 		Namespace: c.getNamespace(),
-		Opts: &pb.GetOptions{
-			ResourceVersion: opts.ResourceVersion,
-		},
+		Opts:      devicev1alpha1.ToProtoGetOptions(opts),
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", name)
 	}
 
 	obj := devicev1alpha1.FromProto(resp.GetGpu())
 	c.logger.V(6).Info("Fetched GPU",
 		"name", name,
 		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
 		"resource-version", obj.GetResourceVersion(),
 	)
 
@@ -90,14 +94,26 @@ func (c *gpus) Get(ctx context.Context, name string, opts v1.GetOptions) (*devic
 }
 
 func (c *gpus) List(ctx context.Context, opts v1.ListOptions) (*devicev1alpha1.GPUList, error) {
+	if opts.LabelSelector != "" || opts.FieldSelector != "" {
+		return nil, apierrors.NewBadRequest("selectors are not supported for this resource")
+	}
+	if opts.Limit > 0 || opts.Continue != "" {
+		return nil, apierrors.NewBadRequest("pagination (limit/continue) is not supported for this resource")
+	}
+
+	if opts.AllowWatchBookmarks {
+		c.logger.V(6).Info("Ignoring unsupported list option", "option", "allowWatchBookmarks")
+	}
+	if opts.SendInitialEvents != nil {
+		c.logger.V(6).Info("Ignoring unsupported list option", "option", "sendInitialEvents")
+	}
+
 	resp, err := c.client.ListGpus(ctx, &pb.ListGpusRequest{
 		Namespace: c.getNamespace(),
-		Opts: &pb.ListOptions{
-			ResourceVersion: opts.ResourceVersion,
-		},
+		Opts:      devicev1alpha1.ToProtoListOptions(opts),
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", "")
 	}
 
 	list := devicev1alpha1.FromProtoList(resp.GetGpuList())
@@ -111,22 +127,35 @@ func (c *gpus) List(ctx context.Context, opts v1.ListOptions) (*devicev1alpha1.G
 }
 
 func (c *gpus) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+	if opts.LabelSelector != "" || opts.FieldSelector != "" {
+		return nil, apierrors.NewBadRequest("selectors are not supported for this resource")
+	}
+	if opts.Limit > 0 || opts.Continue != "" {
+		return nil, apierrors.NewBadRequest("pagination (limit/continue) is not supported for this resource")
+	}
+
+	if opts.AllowWatchBookmarks {
+		c.logger.V(6).Info("Ignoring unsupported list option", "option", "allowWatchBookmarks")
+	}
+	if opts.SendInitialEvents != nil {
+		c.logger.V(6).Info("Ignoring unsupported list option", "option", "sendInitialEvents")
+	}
+
 	c.logger.V(4).Info("Opening watch stream",
 		"resource", "gpus",
 		"namespace", c.getNamespace(),
 		"resource-version", opts.ResourceVersion,
+		"timeout-seconds", opts.TimeoutSeconds,
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
 	stream, err := c.client.WatchGpus(ctx, &pb.WatchGpusRequest{
 		Namespace: c.getNamespace(),
-		Opts: &pb.ListOptions{
-			ResourceVersion: opts.ResourceVersion,
-		},
+		Opts:      devicev1alpha1.ToProtoListOptions(opts),
 	})
 	if err != nil {
 		cancel()
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", "")
 	}
 
 	return client.NewWatcher(&gpusStreamAdapter{stream: stream}, cancel, c.logger), nil
@@ -152,75 +181,120 @@ func (a *gpusStreamAdapter) Close() error {
 	return a.stream.CloseSend()
 }
 
-// TODO: Implement CreateOptions support.
 func (c *gpus) Create(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.CreateOptions) (*devicev1alpha1.GPU, error) {
+	if len(opts.DryRun) != 0 {
+		return nil, apierrors.NewBadRequest("dryRun is not supported for this resource")
+	}
+
+	if opts.FieldManager != "" {
+		c.logger.V(6).Info("Ignoring unsupported create option", "option", "fieldManager")
+	}
+	if opts.FieldValidation != "" {
+		c.logger.V(6).Info("Ignoring unsupported create option", "option", "fieldValidation")
+	}
+
 	resp, err := c.client.CreateGpu(ctx, &pb.CreateGpuRequest{
 		Gpu:  devicev1alpha1.ToProto(gpu),
 		Opts: &pb.CreateOptions{},
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", gpu.GetName())
 	}
 
 	obj := devicev1alpha1.FromProto(resp)
 	c.logger.V(2).Info("Created GPU",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
 		"resource-version", obj.GetResourceVersion(),
 	)
 
 	return obj, nil
 }
 
-// TODO: Implement UpdateOptions support.
 func (c *gpus) Update(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error) {
+	if len(opts.DryRun) != 0 {
+		return nil, apierrors.NewBadRequest("dryRun is not supported for this resource")
+	}
+
+	if opts.FieldManager != "" {
+		c.logger.V(6).Info("Ignoring unsupported update option", "option", "fieldManager")
+	}
+	if opts.FieldValidation != "" {
+		c.logger.V(6).Info("Ignoring unsupported update option", "option", "fieldValidation")
+	}
+
 	resp, err := c.client.UpdateGpu(ctx, &pb.UpdateGpuRequest{
 		Gpu:  devicev1alpha1.ToProto(gpu),
-		Opts: &pb.UpdateOptions{},
+		Opts: devicev1alpha1.ToProtoUpdateOptions(opts),
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", gpu.GetName())
 	}
 
 	obj := devicev1alpha1.FromProto(resp)
 	c.logger.V(2).Info("Updated GPU",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
 		"resource-version", obj.GetResourceVersion(),
 	)
 
 	return obj, nil
 }
 
-// UpdateStatus updates only the status subresource of a GPU.
 func (c *gpus) UpdateStatus(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.UpdateOptions) (*devicev1alpha1.GPU, error) {
+	if len(opts.DryRun) != 0 {
+		return nil, apierrors.NewBadRequest("dryRun is not supported for this resource")
+	}
+
+	if opts.FieldManager != "" {
+		c.logger.V(6).Info("Ignoring unsupported update option", "option", "fieldManager")
+	}
+	if opts.FieldValidation != "" {
+		c.logger.V(6).Info("Ignoring unsupported update option", "option", "fieldValidation")
+	}
+
 	resp, err := c.client.UpdateGpuStatus(ctx, &pb.UpdateGpuStatusRequest{
 		Gpu:  devicev1alpha1.ToProto(gpu),
-		Opts: &pb.UpdateOptions{},
+		Opts: devicev1alpha1.ToProtoUpdateOptions(opts),
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.NewAPIError(err, "gpus", gpu.GetName())
 	}
 
 	obj := devicev1alpha1.FromProto(resp)
 	c.logger.V(2).Info("Updated GPU status",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
 		"resource-version", obj.GetResourceVersion(),
 	)
 
 	return obj, nil
 }
 
-// TODO: Implement DeleteOptions support.
 func (c *gpus) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+	if opts.GracePeriodSeconds != nil {
+		return apierrors.NewBadRequest("gracePeriodSeconds is not supported for this resource")
+	}
+	if opts.OrphanDependents != nil {
+		return apierrors.NewBadRequest("orphanDependents is not supported for this resource")
+	}
+	if opts.PropagationPolicy != nil {
+		return apierrors.NewBadRequest("propagationPolicy is not supported for this resource")
+	}
+	if len(opts.DryRun) != 0 {
+		return apierrors.NewBadRequest("dryRun is not supported for this resource")
+	}
+
 	_, err := c.client.DeleteGpu(ctx, &pb.DeleteGpuRequest{
 		Name:      name,
 		Namespace: c.getNamespace(),
-		Opts:      &pb.DeleteOptions{},
+		Opts:      devicev1alpha1.ToProtoDeleteOptions(opts),
 	})
 	if err != nil {
-		return err
+		return errors.NewAPIError(err, "gpus", name)
 	}
 
 	c.logger.V(2).Info("Deleted GPU",
@@ -229,4 +303,42 @@ func (c *gpus) Delete(ctx context.Context, name string, opts v1.DeleteOptions) e
 	)
 
 	return nil
+}
+
+func (c *gpus) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (*devicev1alpha1.GPU, error) {
+	if len(opts.DryRun) != 0 {
+		return nil, apierrors.NewBadRequest("dryRun is not supported for this resource")
+	}
+
+	if opts.Force != nil {
+		c.logger.V(6).Info("Ignoring unsupported patch option", "option", "force")
+	}
+	if opts.FieldManager != "" {
+		c.logger.V(6).Info("Ignoring unsupported patch option", "option", "fieldManager")
+	}
+	if opts.FieldValidation != "" {
+		c.logger.V(6).Info("Ignoring unsupported patch option", "option", "fieldValidation")
+	}
+
+	resp, err := c.client.PatchGpu(ctx, &pb.PatchGpuRequest{
+		Name:         name,
+		Namespace:    c.getNamespace(),
+		PatchType:    string(pt),
+		Data:         data,
+		Opts:         devicev1alpha1.ToProtoPatchOptions(opts),
+		Subresources: subresources,
+	})
+	if err != nil {
+		return nil, errors.NewAPIError(err, "gpus", name)
+	}
+
+	obj := devicev1alpha1.FromProto(resp)
+	c.logger.V(2).Info("Patched GPU",
+		"name", name,
+		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
+		"resource-version", obj.GetResourceVersion(),
+	)
+
+	return obj, nil
 }

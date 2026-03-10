@@ -1,0 +1,22 @@
+############################################################
+# GLOBAL CONFIGURATION
+############################################################
+
+global:
+  image:
+    registry: ghcr.io
+    pullPolicy: IfNotPresent
+    tag: ""
+  imagePullSecrets: []
+
+############################################################
+# SUBCHART OVERRIDES
+############################################################
+
+# --- device-apiserver ---
+device-apiserver:
+  enabled: true
+
+# --- nvml-provider ---
+nvml-provider:
+  enabled: true

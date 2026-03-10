@@ -1,0 +1,27 @@
+apiVersion: k6.io/v1alpha1
+kind: TestRun 
+metadata:
+  name: device-apiserver-load-256-test
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: k6-test-assets
+      file: load.js
+  runner:
+    nodeSelector:
+      kubernetes.io/hostname: device-api-control-plane
+    env:
+      - name: TARGET_ADDR
+        value: "device-apiserver-haproxy-svc.default.svc.cluster.local:8081"
+      - name: TEST_DURATION_SECONDS
+        value: "600"
+      - name: WATCH_GRACE_PERIOD_SECONDS
+        value: "30"
+      - name: GPU_COUNT
+        value: "256"
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+

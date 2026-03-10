@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build nvml
-
 package main
 
 import (
@@ -25,7 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	nvmlpkg "github.com/nvidia/nvsentinel/pkg/providers/nvml"
+	nvmlpkg "github.com/nvidia/nvsentinel/pkg/provider/nvml"
 )
 
 // ReconcileState reconciles the provider's state with the device-api-server.

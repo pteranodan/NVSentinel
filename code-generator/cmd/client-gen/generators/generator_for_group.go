@@ -94,6 +94,7 @@ func (g *genGroup) GenerateType(c *generator.Context, t *types.Type, w io.Writer
 		"GroupGoName":         g.groupGoName,
 		"Version":             namer.IC(g.version),
 		"types":               g.types,
+		"context":             c.Universe.Type(types.Name{Package: "context", Name: "Context"}),
 		"ClientConnInterface": c.Universe.Type(types.Name{Package: "google.golang.org/grpc", Name: "ClientConnInterface"}),
 		"Config":              c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "Config"}),
 		"ClientConnFor":       c.Universe.Function(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "ClientConnFor"}),
@@ -160,13 +161,13 @@ var newClientForConfigTemplate = `
 // NewForConfig creates a new $.GroupGoName$$.Version$Client for the given config.
 // NewForConfig is equivalent to NewForConfigAndClient(c, clientConn),
 // where clientConn was generated with nvgrpc.ClientConnFor(c).
-func NewForConfig(c *$.Config|raw$) (*$.GroupGoName$$.Version$Client, error) {
+func NewForConfig(ctx $.context|raw$, c *$.Config|raw$) (*$.GroupGoName$$.Version$Client, error) {
 	if c == nil {
 		return nil, $.fmtErrorf|raw$("config cannot be nil")
 	}
 
 	config := *c // Shallow copy to avoid mutation
-	conn, err := $.ClientConnFor|raw$(&config)
+	conn, err := $.ClientConnFor|raw$(ctx, &config)
 	if err != nil {
 		return nil, err
 	}
@@ -196,8 +197,8 @@ func NewForConfigAndClient(c *$.Config|raw$, conn $.ClientConnInterface|raw$) (*
 var newClientForConfigOrDieTemplate = `
 // NewForConfigOrDie creates a new $.GroupGoName$$.Version$Client for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(c *$.Config|raw$) *$.GroupGoName$$.Version$Client {
-	client, err := NewForConfig(c)
+func NewForConfigOrDie(ctx $.context|raw$, c *$.Config|raw$) *$.GroupGoName$$.Version$Client {
+	client, err := NewForConfig(ctx, c)
 	if err != nil {
 		panic(err)
 	}

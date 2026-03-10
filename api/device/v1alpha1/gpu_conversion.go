@@ -16,7 +16,10 @@
 
 package v1alpha1
 
-import pb "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
+import (
+	pb "github.com/nvidia/nvsentinel/internal/generated/proto/device/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // converter is the singleton instance of the generated Converter implementation.
 var converter Converter = &ConverterImpl{}
@@ -57,4 +60,38 @@ func ToProtoList(in *GPUList) *pb.GpuList {
 	}
 
 	return converter.ToProtobufList(in)
+}
+
+// ToProtoGetOptions converts a metav1.GetOptions to a protobuf GetOptions message pointer.
+func ToProtoGetOptions(in metav1.GetOptions) *pb.GetOptions {
+	return converter.ToProtobufGetOptions(in)
+}
+
+// ToProtoUpdateOptions converts a metav1.UpdateOptions to a protobuf UpdateOptions message pointer.
+func ToProtoUpdateOptions(in metav1.UpdateOptions) *pb.UpdateOptions {
+	return (*pb.UpdateOptions)(converter.ToProtobufUpdateOptions(in))
+}
+
+// ToProtoListOptions converts a metav1.ListOptions to a protobuf ListOptions message pointer.
+func ToProtoListOptions(in metav1.ListOptions) *pb.ListOptions {
+	return converter.ToProtobufListOptions(in)
+}
+
+// ToProtoDeleteOptions converts a metav1.DeleteOptions to a protobuf DeleteOptions message pointer.
+func ToProtoDeleteOptions(in metav1.DeleteOptions) *pb.DeleteOptions {
+	return converter.ToProtobufDeleteOptions(in)
+}
+
+// ToProtoPreconditions converts a metav1.Preconditions pointer to a protobuf Preconditions message pointer.
+func ToProtoPreconditions(in *metav1.Preconditions) *pb.Preconditions {
+	if in == nil {
+		return nil
+	}
+
+	return converter.ToProtobufPreconditions(in)
+}
+
+// ToProtoPatchOptions converts a metav1.PatchOptions to a protobuf PatchOptions message pointer.
+func ToProtoPatchOptions(in metav1.PatchOptions) *pb.PatchOptions {
+	return converter.ToProtobufPatchOptions(in)
 }

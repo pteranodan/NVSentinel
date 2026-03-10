@@ -25,8 +25,8 @@ import (
 func TestGet(t *testing.T) {
 	info := Get()
 
-	if info.Version != Version {
-		t.Errorf("expected Version %s, got %s", Version, info.Version)
+	if info.GitVersion != GitVersion {
+		t.Errorf("expected Version %s, got %s", GitVersion, info.GitVersion)
 	}
 
 	if info.GoVersion == "" || info.Platform == "" {
@@ -36,7 +36,7 @@ func TestGet(t *testing.T) {
 
 func TestUserAgent(t *testing.T) {
 	ua := UserAgent()
-	expectedPrefix := "nvidia-device-api/" + Version
+	expectedPrefix := "nvidia-device-api/" + GitVersion
 
 	if !strings.HasPrefix(ua, expectedPrefix) {
 		t.Errorf("UserAgent %s does not start with %s", ua, expectedPrefix)
@@ -62,7 +62,7 @@ func TestHandler(t *testing.T) {
 		t.Fatalf("failed to decode response body: %v", err)
 	}
 
-	if info.Version != Version {
-		t.Errorf("expected version %s in response, got %s", Version, info.Version)
+	if info.GitVersion != GitVersion {
+		t.Errorf("expected version %s in response, got %s", GitVersion, info.GitVersion)
 	}
 }

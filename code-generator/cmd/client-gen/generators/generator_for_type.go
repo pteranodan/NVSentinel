@@ -99,36 +99,41 @@ func (g *genClientForType) GenerateType(c *generator.Context, t *types.Type, w i
 	}
 	protoType := titler.String(t.Name.Name)
 	m := map[string]interface{}{
-		"type":             t,
-		"inputType":        t,
-		"resultType":       t,
-		"package":          pkg,
-		"Package":          namer.IC(pkg),
-		"namespaced":       !tags.NonNamespaced,
-		"Group":            namer.IC(g.group),
-		"GroupGoName":      g.groupGoName,
-		"Version":          namer.IC(g.version),
-		"ProtoType":        protoType,
-		"context":          c.Universe.Type(types.Name{Package: "context", Name: "Context"}),
-		"fmtErrorf":        c.Universe.Function(types.Name{Package: "fmt", Name: "Errorf"}),
-		"metav1":           c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "Option"}),
-		"GetOptions":       c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "GetOptions"}),
-		"ListOptions":      c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "ListOptions"}),
-		"CreateOptions":    c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "CreateOptions"}),
-		"DeleteOptions":    c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "DeleteOptions"}),
-		"UpdateOptions":    c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "UpdateOptions"}),
-		"PatchOptions":     c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "PatchOptions"}),
-		"PatchType":        c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/types", Name: "PatchType"}),
-		"runtime":          c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/runtime", Name: "Object"}),
-		"watchInterface":   c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/watch", Name: "Interface"}),
-		"logr":             c.Universe.Type(types.Name{Package: "github.com/go-logr/logr", Name: "Logger"}),
-		"nvgrpc":           c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "NewWatcher"}),
-		"pb":               g.protoPackage.Alias,
-		"apiPackage":       c.Universe.Type(types.Name{Package: g.inputPackage, Name: "Ignored"}),
-		"ToProto":          c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProto"}),
-		"FromProto":        c.Universe.Function(types.Name{Package: g.inputPackage, Name: "FromProto"}),
-		"FromProtoList":    c.Universe.Function(types.Name{Package: g.inputPackage, Name: "FromProtoList"}),
-		"NewServiceClient": g.protoPackage.ServiceClientConstructorFor(protoType),
+		"type":                 t,
+		"inputType":            t,
+		"resultType":           t,
+		"package":              pkg,
+		"Package":              namer.IC(pkg),
+		"namespaced":           !tags.NonNamespaced,
+		"Group":                namer.IC(g.group),
+		"GroupGoName":          g.groupGoName,
+		"Version":              namer.IC(g.version),
+		"ProtoType":            protoType,
+		"context":              c.Universe.Type(types.Name{Package: "context", Name: "Context"}),
+		"NewBadRequest":        c.Universe.Function(types.Name{Package: "k8s.io/apimachinery/pkg/api/errors", Name: "NewBadRequest"}),
+		"GetOptions":           c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "GetOptions"}),
+		"ListOptions":          c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "ListOptions"}),
+		"CreateOptions":        c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "CreateOptions"}),
+		"DeleteOptions":        c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "DeleteOptions"}),
+		"UpdateOptions":        c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "UpdateOptions"}),
+		"PatchOptions":         c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "PatchOptions"}),
+		"PatchType":            c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/types", Name: "PatchType"}),
+		"runtime":              c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/runtime", Name: "Object"}),
+		"watchInterface":       c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/watch", Name: "Interface"}),
+		"logr":                 c.Universe.Type(types.Name{Package: "github.com/go-logr/logr", Name: "Logger"}),
+		"nvgrpc":               c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "NewWatcher"}),
+		"NewAPIError":          c.Universe.Function(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/errors", Name: "NewAPIError"}),
+		"pb":                   g.protoPackage.Alias,
+		"apiPackage":           c.Universe.Type(types.Name{Package: g.inputPackage, Name: "Ignored"}),
+		"ToProto":              c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProto"}),
+		"ToProtoGetOptions":    c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoGetOptions"}),
+		"ToProtoUpdateOptions": c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoUpdateOptions"}),
+		"ToProtoListOptions":   c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoListOptions"}),
+		"ToProtoDeleteOptions": c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoDeleteOptions"}),
+		"ToProtoPatchOptions":  c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoPatchOptions"}),
+		"FromProto":            c.Universe.Function(types.Name{Package: g.inputPackage, Name: "FromProto"}),
+		"FromProtoList":        c.Universe.Function(types.Name{Package: g.inputPackage, Name: "FromProtoList"}),
+		"NewServiceClient":     g.protoPackage.ServiceClientConstructorFor(protoType),
 	}
 
 	sw.Do(getterComment, m)
@@ -194,13 +199,13 @@ func generateInterfaceTemplate(tags util.Tags, t *types.Type) string {
 type $.type|public$Interface interface {`)
 
 	if tags.HasVerb("create") {
-		lines = append(lines, `	Create(ctx $.context|raw$, $.type|private$ *$.type|raw$, opts $.CreateOptions|raw$) (*$.type|raw$, error)`)
+		lines = append(lines, `	Create(ctx $.context|raw$, $.type|allLowercase$ *$.type|raw$, opts $.CreateOptions|raw$) (*$.type|raw$, error)`)
 	}
 	if tags.HasVerb("update") {
-		lines = append(lines, `	Update(ctx $.context|raw$, $.type|private$ *$.type|raw$, opts $.UpdateOptions|raw$) (*$.type|raw$, error)`)
+		lines = append(lines, `	Update(ctx $.context|raw$, $.type|allLowercase$ *$.type|raw$, opts $.UpdateOptions|raw$) (*$.type|raw$, error)`)
 	}
 	if genStatus(t) && tags.HasVerb("updateStatus") {
-		lines = append(lines, `	UpdateStatus(ctx $.context|raw$, $.type|private$ *$.type|raw$, opts $.UpdateOptions|raw$) (*$.type|raw$, error)`)
+		lines = append(lines, `	UpdateStatus(ctx $.context|raw$, $.type|allLowercase$ *$.type|raw$, opts $.UpdateOptions|raw$) (*$.type|raw$, error)`)
 	}
 	if tags.HasVerb("delete") {
 		lines = append(lines, `	Delete(ctx $.context|raw$, name string, opts $.DeleteOptions|raw$) error`)
@@ -215,7 +220,7 @@ type $.type|public$Interface interface {`)
 		lines = append(lines, `	Watch(ctx $.context|raw$, opts $.ListOptions|raw$) ($.watchInterface|raw$, error)`)
 	}
 	if tags.HasVerb("patch") {
-		lines = append(lines, `	Patch(ctx $.context|raw$, name string, pt $.PatchType|raw$, data []byte, opts $.PatchOptions|raw$, subresources ...string) (result *$.type|raw$, err error)`)
+		lines = append(lines, `	Patch(ctx $.context|raw$, name string, pt $.PatchType|raw$, data []byte, opts $.PatchOptions|raw$, subresources ...string) (*$.type|raw$, error)`)
 	}
 
 	lines = append(lines, `	$.type|public$Expansion
@@ -280,24 +285,37 @@ func new$.type|publicPlural$(c *$.GroupGoName$$.Version$Client) *$.type|allLower
 `
 
 var structHelpers = `
-func (c *$.type|allLowercasePlural$) getNamespace() string {
+func (c *$.type|allLowercasePlural$) getNamespace() *string {
+	ns := ""
 	if c == nil {
-		return ""
+		return &ns 
 	}
-	return $if .namespaced$c.namespace$else$""$end$
+	return $if .namespaced$c.namespace$else$&ns$end$
 }
 `
 
 var listTemplate = `
 func (c *$.type|allLowercasePlural$) List(ctx $.context|raw$, opts $.ListOptions|raw$) (*$.type|raw$List, error) {
+	if opts.LabelSelector != "" || opts.FieldSelector != "" {
+		return nil, $.NewBadRequest|raw$("selectors are not supported for this resource")
+	}
+	if opts.Limit > 0 || opts.Continue != "" {
+        return nil, $.NewBadRequest|raw$("pagination (limit/continue) is not supported for this resource")
+    }
+
+	if opts.AllowWatchBookmarks {
+		c.logger.V(6).Info("Ignoring unsupported list option", "option", "allowWatchBookmarks")
+    }
+    if opts.SendInitialEvents != nil {
+		c.logger.V(6).Info("Ignoring unsupported list option", "option", "sendInitialEvents")
+    }
+
 	resp, err := c.client.List$.ProtoType$s(ctx, &$.pb$.List$.ProtoType$sRequest{
 		Namespace: c.getNamespace(),
-		Opts:      &$.pb$.ListOptions{
-			ResourceVersion: opts.ResourceVersion,
-		},
+		Opts:      $.ToProtoListOptions|raw$(opts),
 	})
 	if err != nil {
-		return nil, err
+		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", "")
 	}
 
 	list := $.FromProtoList|raw$(resp.Get$.ProtoType$List())
@@ -316,18 +334,17 @@ func (c *$.type|allLowercasePlural$) Get(ctx $.context|raw$, name string, opts $
 	resp, err := c.client.Get$.ProtoType$(ctx, &$.pb$.Get$.ProtoType$Request{
 		Name:      name,
 		Namespace: c.getNamespace(),
-		Opts:      &$.pb$.GetOptions{
-			ResourceVersion: opts.ResourceVersion,
-		},
+		Opts:      $.ToProtoGetOptions|raw$(opts),
 	})
 	if err != nil {
-		return nil, err
+		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", name)
 	}
 
 	obj := $.FromProto|raw$(resp.Get$.ProtoType$())
 	c.logger.V(6).Info("Fetched $.type|public$",
 		"name", name,
 		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
 		"resource-version", obj.GetResourceVersion(),
 	)
 
@@ -336,15 +353,27 @@ func (c *$.type|allLowercasePlural$) Get(ctx $.context|raw$, name string, opts $
 `
 
 var deleteTemplate = `
-// TODO: Implement DeleteOptions support.
 func (c *$.type|allLowercasePlural$) Delete(ctx $.context|raw$, name string, opts $.DeleteOptions|raw$) error {
+	if opts.GracePeriodSeconds != nil {
+		return $.NewBadRequest|raw$("gracePeriodSeconds is not supported for this resource")
+	}
+	if opts.OrphanDependents != nil {
+		return $.NewBadRequest|raw$("orphanDependents is not supported for this resource")
+	}
+	if opts.PropagationPolicy != nil {
+		return $.NewBadRequest|raw$("propagationPolicy is not supported for this resource")
+	}
+	if len(opts.DryRun) != 0 {
+		return $.NewBadRequest|raw$("dryRun is not supported for this resource")
+	}
+
 	_, err := c.client.Delete$.ProtoType$(ctx, &$.pb$.Delete$.ProtoType$Request{
 		Name:      name,
 		Namespace: c.getNamespace(),
-		Opts:      &$.pb$.DeleteOptions{}, 
+		Opts:      $.ToProtoDeleteOptions|raw$(opts), 
 	})
 	if err != nil {
-		return err
+		return $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", name)
 	}
 
 	c.logger.V(2).Info("Deleted $.type|public$",
@@ -357,20 +386,31 @@ func (c *$.type|allLowercasePlural$) Delete(ctx $.context|raw$, name string, opt
 `
 
 var createTemplate = `
-// TODO: Implement CreateOptions support.
 func (c *$.type|allLowercasePlural$) Create(ctx $.context|raw$, $.type|allLowercase$ *$.type|raw$, opts $.CreateOptions|raw$) (*$.type|raw$, error) {
+	if len(opts.DryRun) != 0 {
+		return nil, $.NewBadRequest|raw$("dryRun is not supported for this resource")
+	}
+
+	if opts.FieldManager != "" {
+		c.logger.V(6).Info("Ignoring unsupported create option", "option", "fieldManager")
+	}
+	if opts.FieldValidation != "" {
+		c.logger.V(6).Info("Ignoring unsupported create option", "option", "fieldValidation")
+	}
+
 	resp, err := c.client.Create$.ProtoType$(ctx, &$.pb$.Create$.ProtoType$Request{
 		$.ProtoType$: $.ToProto|raw$($.type|allLowercase$),	
 		Opts:         &$.pb$.CreateOptions{},
 	})
 	if err != nil {
-		return nil, err
+		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", $.type|allLowercase$.GetName())
 	}
 
 	obj := $.FromProto|raw$(resp)
 	c.logger.V(2).Info("Created $.type|public$",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
 		"resource-version", obj.GetResourceVersion(),
 	)
 
@@ -379,20 +419,31 @@ func (c *$.type|allLowercasePlural$) Create(ctx $.context|raw$, $.type|allLowerc
 `
 
 var updateTemplate = `
-// TODO: Implement UpdateOptions support.
 func (c *$.type|allLowercasePlural$) Update(ctx $.context|raw$, $.type|allLowercase$ *$.type|raw$, opts $.UpdateOptions|raw$) (*$.type|raw$, error) {
+	if len(opts.DryRun) != 0 {
+		return nil, $.NewBadRequest|raw$("dryRun is not supported for this resource")
+	}
+
+	if opts.FieldManager != "" {
+		c.logger.V(6).Info("Ignoring unsupported update option", "option", "fieldManager")
+	}
+	if opts.FieldValidation != "" {
+		c.logger.V(6).Info("Ignoring unsupported update option", "option", "fieldValidation")
+	}
+
 	resp, err := c.client.Update$.ProtoType$(ctx, &$.pb$.Update$.ProtoType$Request{
 		$.ProtoType$: $.ToProto|raw$($.type|allLowercase$),	
-		Opts:         &$.pb$.UpdateOptions{},
+		Opts:         $.ToProtoUpdateOptions|raw$(opts),
 	})
 	if err != nil {
-		return nil, err
+		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", $.type|allLowercase$.GetName())
 	}
 
 	obj := $.FromProto|raw$(resp)
 	c.logger.V(2).Info("Updated $.type|public$",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
 		"resource-version", obj.GetResourceVersion(),
 	)
 
@@ -401,20 +452,31 @@ func (c *$.type|allLowercasePlural$) Update(ctx $.context|raw$, $.type|allLowerc
 `
 
 var updateStatusTemplate = `
-// UpdateStatus updates only the status subresource of a $.type|public$.
 func (c *$.type|allLowercasePlural$) UpdateStatus(ctx $.context|raw$, $.type|allLowercase$ *$.type|raw$, opts $.UpdateOptions|raw$) (*$.type|raw$, error) {
+	if len(opts.DryRun) != 0 {
+		return nil, $.NewBadRequest|raw$("dryRun is not supported for this resource")
+	}
+
+	if opts.FieldManager != "" {
+		c.logger.V(6).Info("Ignoring unsupported update option", "option", "fieldManager")
+	}
+	if opts.FieldValidation != "" {
+		c.logger.V(6).Info("Ignoring unsupported update option", "option", "fieldValidation")
+	}
+
 	resp, err := c.client.Update$.ProtoType$Status(ctx, &$.pb$.Update$.ProtoType$StatusRequest{
 		$.ProtoType$: $.ToProto|raw$($.type|allLowercase$),
-		Opts:         &$.pb$.UpdateOptions{},
+		Opts:         $.ToProtoUpdateOptions|raw$(opts),
 	})
 	if err != nil {
-		return nil, err
+		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", $.type|allLowercase$.GetName())
 	}
 
 	obj := $.FromProto|raw$(resp)
 	c.logger.V(2).Info("Updated $.type|public$ status",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
 		"resource-version", obj.GetResourceVersion(),
 	)
 
@@ -424,22 +486,35 @@ func (c *$.type|allLowercasePlural$) UpdateStatus(ctx $.context|raw$, $.type|all
 
 var watchTemplate = `
 func (c *$.type|allLowercasePlural$) Watch(ctx $.context|raw$, opts $.ListOptions|raw$) ($.watchInterface|raw$, error) {
+	if opts.LabelSelector != "" || opts.FieldSelector != "" {
+        return nil, $.NewBadRequest|raw$("selectors are not supported for this resource")
+    }
+	if opts.Limit > 0 || opts.Continue != "" {
+        return nil, $.NewBadRequest|raw$("pagination (limit/continue) is not supported for this resource")
+    }
+
+	if opts.AllowWatchBookmarks {
+		c.logger.V(6).Info("Ignoring unsupported list option", "option", "allowWatchBookmarks")
+    }
+    if opts.SendInitialEvents != nil {
+		c.logger.V(6).Info("Ignoring unsupported list option", "option", "sendInitialEvents")
+    }
+
 	c.logger.V(4).Info("Opening watch stream",
-		"resource", "$.type|allLowercasePlural$",
-		"namespace", c.getNamespace(),
+		"resource",         "$.type|allLowercasePlural$",
+		"namespace",        c.getNamespace(),
 		"resource-version", opts.ResourceVersion,
+		"timeout-seconds",  opts.TimeoutSeconds,
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
 	stream, err := c.client.Watch$.ProtoType$s(ctx, &$.pb$.Watch$.ProtoType$sRequest{
 		Namespace: c.getNamespace(),
-		Opts:      &$.pb$.ListOptions{
-			ResourceVersion: opts.ResourceVersion,
-		},
+		Opts:      $.ToProtoListOptions|raw$(opts),
 	})
 	if err != nil {
 		cancel()
-		return nil, err
+		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", "")
 	}
 
 	return $.nvgrpc|raw$(&$.type|allLowercasePlural$StreamAdapter{stream: stream}, cancel, c.logger), nil
@@ -469,8 +544,41 @@ func (a *$.type|allLowercasePlural$StreamAdapter) Close() error {
 `
 
 var patchTemplate = `
-// TODO: Implement Patch support.
-func (c *$.type|allLowercasePlural$) Patch(ctx $.context|raw$, name string, pt $.PatchType|raw$, data []byte, opts $.PatchOptions|raw$, subresources ...string) (result *$.type|raw$, err error) {
-	return nil, $.fmtErrorf|raw$("Patch not implemented")
+func (c *$.type|allLowercasePlural$) Patch(ctx $.context|raw$, name string, pt $.PatchType|raw$, data []byte, opts $.PatchOptions|raw$, subresources ...string) (*$.type|raw$, error) {
+	if len(opts.DryRun) != 0 {
+		return nil, $.NewBadRequest|raw$("dryRun is not supported for this resource")
+	}
+
+	if opts.Force != nil {
+		c.logger.V(6).Info("Ignoring unsupported patch option", "option", "force")
+	}
+	if opts.FieldManager != "" {
+		c.logger.V(6).Info("Ignoring unsupported patch option", "option", "fieldManager")
+	}
+	if opts.FieldValidation != "" {
+		c.logger.V(6).Info("Ignoring unsupported patch option", "option", "fieldValidation")
+	}
+
+	resp, err := c.client.Patch$.ProtoType$(ctx, &$.pb$.Patch$.ProtoType$Request{
+		Name: name,
+		Namespace: c.getNamespace(),
+		PatchType: string(pt),
+		Data: data,
+		Opts:         $.ToProtoPatchOptions|raw$(opts),
+		Subresources: subresources,
+	})
+	if err != nil {
+		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", name)
+	}
+
+	obj := $.FromProto|raw$(resp)
+	c.logger.V(2).Info("Patched $.type|public$",
+		"name", name,
+		"namespace", c.getNamespace(),
+		"uid", obj.GetUID(),
+		"resource-version", obj.GetResourceVersion(),
+	)
+
+	return obj, nil
 }
 `

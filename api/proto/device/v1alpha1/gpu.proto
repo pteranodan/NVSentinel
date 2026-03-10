@@ -82,17 +82,22 @@ message ListMeta {
 // GetOptions is the standard query options to the standard gRPC get call.
 message GetOptions {
   // resource_version sets a constraint on what resource versions a request may be served from.
-  //
-  // Optional. Defaults to unset.
-  string resource_version = 1;
+  optional string resource_version = 1;
 }
 
 // ListOptions is the query options to a standard gRPC list call. It is a subset of k8s.io/apimachinery/pkg/apis/meta/v1.ListOptions.
 message ListOptions {
   // resource_version sets a constraint on what resource versions a request may be served from.
-  //
-  // Optional. Defaults to unset.
-  string resource_version = 1;
+  optional string resource_version = 1;
+
+  // resource_version_match determines how resource_version is applied to list calls.
+  // It is highly recommended that resource_version_match be set for list calls where
+  // resource_version is set.
+  optional string resource_version_match = 2;
+
+  // timeout_seconds for list and watch calls.
+  // This limits the duration of the call, regardless of any activity or inactivity.
+  optional int64 timeout_seconds = 3;
 }
 
 // CreateOptions may be provided when creating an API object.
@@ -104,8 +109,24 @@ message CreateOptions { }
 message UpdateOptions { }
 
 // DeleteOptions may be provided when deleting an API object.
+message DeleteOptions { 
+  // preconditions must be fulfilled before a deletion is carried out. If not possible,
+  // a 409 conflict status will be returned.
+  optional Preconditions preconditions = 1;
+}
+
+// Preconditions must be fulfilled before an operation (update or delete) is carried out.
+message Preconditions {
+  // uid specifies the target uid
+  optional string uid = 1;
+
+  // resource_version specifies the target resource_version
+  optional string resource_version = 2;
+}
+
+// PatchOptions may be provided when updating an API object.
 // This message is currently a placeholder; all fields are ignored in v1alpha1.
-message DeleteOptions { }
+message PatchOptions { }
 
 // Gpu represents a single GPU resource.
 //
@@ -148,7 +169,7 @@ message GpuStatus {
   repeated Condition conditions = 1;
 
   // recommended_action is a suggestion for resolving the current negative state.
-  string recommended_action = 2;
+  optional string recommended_action = 2;
 }
 
 // Condition contains details for one aspect of the current state of a GPU.
@@ -163,14 +184,17 @@ message Condition {
   // Valid values: "True", "False", "Unknown".
   string status = 2;
 
+  // observedGeneration represents the .metadata.generation that the condition was set based upon.
+  optional int64 observed_generation = 3;
+
   // last_transition_time is the timestamp corresponding to the last time the condition transitioned from one status to another. 
-  google.protobuf.Timestamp last_transition_time = 3;
+  google.protobuf.Timestamp last_transition_time = 4;
 
   // reason is a machine-readable, UpperCamelCase text string indicating the reason for the condition's last transition.
-  string reason = 4;
+  string reason = 5;
 
   // message is a human-readable message indicating details about the transition.
-  string message = 5;
+  string message = 6;
 }
 
 // ==========================================
@@ -200,6 +224,9 @@ service GpuService {
 
   // DeleteGpu deletes a single GPU resource.
   rpc DeleteGpu(DeleteGpuRequest) returns (google.protobuf.Empty);
+
+  // PatchGpu patches a single GPU resource.
+  rpc PatchGpu(PatchGpuRequest) returns (Gpu);
 }
 
 // ==========================================
@@ -213,9 +240,7 @@ message GetGpuRequest {
 
   // namespace sets a constraint on what namespaces a request may be served from.
   // An empty namespace is treated as a request for all namespaces.
-  //
-  // Optional. Defaults to unset.
-  string namespace = 2;
+  optional string namespace = 2;
 
   // opts contains the standard query and scoping options for the request.
   GetOptions opts = 3;
@@ -231,9 +256,7 @@ message GetGpuResponse {
 message ListGpusRequest {
   // namespace sets a constraint on what namespaces a request may be served from.
   // An empty namespace is treated as a request for all namespaces.
-  //
-  // Optional. Defaults to unset.
-  string namespace = 1;
+  optional string namespace = 1;
 
   // opts contains the standard query and scoping options for the list.
   ListOptions opts = 2;
@@ -249,9 +272,7 @@ message ListGpusResponse {
 message WatchGpusRequest {
   // namespace sets a constraint on what namespaces a request may be served from.
   // An empty namespace is treated as a request for all namespaces.
-  //
-  // Optional. Defaults to unset.
-  string namespace = 1;
+  optional string namespace = 1;
 
   // opts contains the standard query and scoping options for the watch.
   ListOptions opts = 2;
@@ -293,28 +314,47 @@ message UpdateGpuRequest {
   UpdateOptions opts = 2;
 }
 
-// UpdateGpuStatusRequest specifies the GPU whose status should be updated.
-// Only metadata (name, namespace, resource_version) and status fields are used.
+// UpdateGpuStatusRequest specifies the GPU whose status subresource to update.
 message UpdateGpuStatusRequest {
-  // gpu is the GPU resource with updated status.
-  // The server reads metadata.name, metadata.namespace, metadata.resource_version
-  // and status from this object. All other fields are ignored.
+  // gpu is the GPU resource with the updated status.
   Gpu gpu = 1;
 
-  // opts contains the options for the update.
+  // opts contains the options for the status update.
   UpdateOptions opts = 2;
 }
 
+// DeleteGpuRequest specifies the GPU to delete.
 message DeleteGpuRequest {
   // The unique resource name of the GPU to delete.
   string name = 1;
 
   // namespace sets a constraint on what namespaces a request may be executed in.
   // An empty namespace is treated as a request for all namespaces.
-  //
-  // Optional. Defaults to unset.
-  string namespace = 2;
+  optional string namespace = 2;
 
   // opts contains the options for the delete. 
   DeleteOptions opts = 3;
+}
+
+// PatchGpuRequest specifies the GPU to patch.
+message PatchGpuRequest {
+  // The unique resource name of the GPU to patch.
+  string name = 1;
+
+  // namespace sets a constraint on what namespaces a request may be executed in.
+  // An empty namespace is treated as a request for all namespaces.
+  optional string namespace = 2;
+
+  // patch_type is the type of patch being provided. One of: [json, merge]
+  // See 'k8s.io/apimachinery/pkg/types.PatchType' for more details.
+  string patch_type = 3;
+
+  // data is the patch to be applied to the resource.
+  bytes data = 4;
+
+  // opts contains the options for the patch.
+  PatchOptions opts = 5;
+
+  // If specified, patch will operate on the subresource (e.g., status) of the GPU.
+  repeated string subresources = 6;
 }

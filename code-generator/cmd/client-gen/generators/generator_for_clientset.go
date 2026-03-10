@@ -82,6 +82,7 @@ func (g *genClientset) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 	allGroups := clientgentypes.ToGroupVersionInfo(g.groups, g.groupGoNames)
 	m := map[string]interface{}{
 		"allGroups":           allGroups,
+		"context":             c.Universe.Type(types.Name{Package: "context", Name: "Context"}),
 		"fmtErrorf":           c.Universe.Type(types.Name{Package: "fmt", Name: "Errorf"}),
 		"Config":              c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "Config"}),
 		"ClientConnFor":       c.Universe.Function(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "ClientConnFor"}),
@@ -129,13 +130,13 @@ var newClientsetForConfigTemplate = `
 //
 // If you need to customize the connection (e.g. set a logger),
 // use nvgrpc.ClientConnFor() manually and pass the connection to NewForConfigAndClient.
-func NewForConfig(c *$.Config|raw$) (*Clientset, error) {
+func NewForConfig(ctx $.context|raw$, c *$.Config|raw$) (*Clientset, error) {
 	if c == nil {
 		return nil, $.fmtErrorf|raw$("config cannot be nil")
 	}
 
 	configShallowCopy := *c // Shallow copy to avoid mutation
-	conn, err := $.ClientConnFor|raw$(&configShallowCopy)
+	conn, err := $.ClientConnFor|raw$(ctx, &configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -171,8 +172,8 @@ $end$
 var newClientsetForConfigOrDieTemplate = `
 // NewForConfigOrDie creates a new Clientset for the given config and
 // panics if there is an error in the config or connection setup.
-func NewForConfigOrDie(c *$.Config|raw$) *Clientset {
-	cs, err := NewForConfig(c)
+func NewForConfigOrDie(ctx $.context|raw$, c *$.Config|raw$) *Clientset {
+	cs, err := NewForConfig(ctx, c)
 	if err != nil {
 		panic(err)
 	}

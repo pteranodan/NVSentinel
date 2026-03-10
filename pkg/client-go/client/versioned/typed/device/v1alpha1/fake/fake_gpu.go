@@ -23,6 +23,7 @@ import (
 	v1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
+	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
 )
@@ -124,4 +125,15 @@ func (c *fakeGPUs) Delete(ctx context.Context, name string, opts v1.DeleteOption
 	_, err := c.Fake.
 		Invokes(testing.NewRootDeleteActionWithOptions(c.Resource(), name, opts), &devicev1alpha1.GPU{})
 	return err
+}
+
+// Patch applies the patch and returns the patched gPU.
+func (c *fakeGPUs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *devicev1alpha1.GPU, err error) {
+	emptyResult := &devicev1alpha1.GPU{}
+	obj, err := c.Fake.
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(devicev1alpha1.SchemeGroupVersion.WithResource("gpus"), name, pt, data, opts, subresources...), emptyResult)
+	if obj == nil {
+		return emptyResult, err
+	}
+	return obj.(*devicev1alpha1.GPU), err
 }

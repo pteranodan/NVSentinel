@@ -4,7 +4,7 @@
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/nvidia/nvsentinel/internal/generated/device/v1alpha1"
+	v1alpha1 "github.com/nvidia/nvsentinel/internal/generated/proto/device/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 )
@@ -83,7 +83,9 @@ func (c *ConverterImpl) FromProtobufStatus(source *v1alpha1.GpuStatus) GPUStatus
 				v1alpha1GPUStatus.Conditions[i] = c.FromProtobufCondition((*source).Conditions[i])
 			}
 		}
-		v1alpha1GPUStatus.RecommendedAction = (*source).RecommendedAction
+		if (*source).RecommendedAction != nil {
+			v1alpha1GPUStatus.RecommendedAction = *(*source).RecommendedAction
+		}
 	}
 	return v1alpha1GPUStatus
 }
@@ -98,10 +100,23 @@ func (c *ConverterImpl) ToProtobufCondition(source v1.Condition) *v1alpha1.Condi
 	var v1alpha1Condition v1alpha1.Condition
 	v1alpha1Condition.Type = source.Type
 	v1alpha1Condition.Status = string(source.Status)
+	pInt64 := source.ObservedGeneration
+	v1alpha1Condition.ObservedGeneration = &pInt64
 	v1alpha1Condition.LastTransitionTime = ToProtobufTimestamp(source.LastTransitionTime)
 	v1alpha1Condition.Reason = source.Reason
 	v1alpha1Condition.Message = source.Message
 	return &v1alpha1Condition
+}
+func (c *ConverterImpl) ToProtobufDeleteOptions(source v1.DeleteOptions) *v1alpha1.DeleteOptions {
+	var v1alpha1DeleteOptions v1alpha1.DeleteOptions
+	v1alpha1DeleteOptions.Preconditions = c.ToProtobufPreconditions(source.Preconditions)
+	return &v1alpha1DeleteOptions
+}
+func (c *ConverterImpl) ToProtobufGetOptions(source v1.GetOptions) *v1alpha1.GetOptions {
+	var v1alpha1GetOptions v1alpha1.GetOptions
+	pString := source.ResourceVersion
+	v1alpha1GetOptions.ResourceVersion = &pString
+	return &v1alpha1GetOptions
 }
 func (c *ConverterImpl) ToProtobufList(source *GPUList) *v1alpha1.GpuList {
 	var pV1alpha1GpuList *v1alpha1.GpuList
@@ -123,6 +138,18 @@ func (c *ConverterImpl) ToProtobufListMeta(source v1.ListMeta) *v1alpha1.ListMet
 	v1alpha1ListMeta.ResourceVersion = source.ResourceVersion
 	return &v1alpha1ListMeta
 }
+func (c *ConverterImpl) ToProtobufListOptions(source v1.ListOptions) *v1alpha1.ListOptions {
+	var v1alpha1ListOptions v1alpha1.ListOptions
+	pString := source.ResourceVersion
+	v1alpha1ListOptions.ResourceVersion = &pString
+	pString2 := c.v1ResourceVersionMatchToString(source.ResourceVersionMatch)
+	v1alpha1ListOptions.ResourceVersionMatch = &pString2
+	if source.TimeoutSeconds != nil {
+		xint64 := *source.TimeoutSeconds
+		v1alpha1ListOptions.TimeoutSeconds = &xint64
+	}
+	return &v1alpha1ListOptions
+}
 func (c *ConverterImpl) ToProtobufObjectMeta(source v1.ObjectMeta) *v1alpha1.ObjectMeta {
 	var v1alpha1ObjectMeta v1alpha1.ObjectMeta
 	v1alpha1ObjectMeta.Name = source.Name
@@ -132,6 +159,27 @@ func (c *ConverterImpl) ToProtobufObjectMeta(source v1.ObjectMeta) *v1alpha1.Obj
 	v1alpha1ObjectMeta.Generation = source.Generation
 	v1alpha1ObjectMeta.CreationTimestamp = ToProtobufTimestamp(source.CreationTimestamp)
 	return &v1alpha1ObjectMeta
+}
+func (c *ConverterImpl) ToProtobufPatchOptions(source v1.PatchOptions) *v1alpha1.PatchOptions {
+	var v1alpha1PatchOptions v1alpha1.PatchOptions
+	_ = source
+	return &v1alpha1PatchOptions
+}
+func (c *ConverterImpl) ToProtobufPreconditions(source *v1.Preconditions) *v1alpha1.Preconditions {
+	var pV1alpha1Preconditions *v1alpha1.Preconditions
+	if source != nil {
+		var v1alpha1Preconditions v1alpha1.Preconditions
+		if (*source).UID != nil {
+			xstring := string(*(*source).UID)
+			v1alpha1Preconditions.Uid = &xstring
+		}
+		if (*source).ResourceVersion != nil {
+			xstring2 := *(*source).ResourceVersion
+			v1alpha1Preconditions.ResourceVersion = &xstring2
+		}
+		pV1alpha1Preconditions = &v1alpha1Preconditions
+	}
+	return pV1alpha1Preconditions
 }
 func (c *ConverterImpl) ToProtobufSpec(source GPUSpec) *v1alpha1.GpuSpec {
 	var v1alpha1GpuSpec v1alpha1.GpuSpec
@@ -146,6 +194,15 @@ func (c *ConverterImpl) ToProtobufStatus(source GPUStatus) *v1alpha1.GpuStatus {
 			v1alpha1GpuStatus.Conditions[i] = c.ToProtobufCondition(source.Conditions[i])
 		}
 	}
-	v1alpha1GpuStatus.RecommendedAction = source.RecommendedAction
+	pString := source.RecommendedAction
+	v1alpha1GpuStatus.RecommendedAction = &pString
 	return &v1alpha1GpuStatus
+}
+func (c *ConverterImpl) ToProtobufUpdateOptions(source v1.UpdateOptions) *v1alpha1.UpdateOptions {
+	var v1alpha1UpdateOptions v1alpha1.UpdateOptions
+	_ = source
+	return &v1alpha1UpdateOptions
+}
+func (c *ConverterImpl) v1ResourceVersionMatchToString(source v1.ResourceVersionMatch) string {
+	return string(source)
 }

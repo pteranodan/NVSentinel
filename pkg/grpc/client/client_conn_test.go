@@ -15,6 +15,7 @@
 package client
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -24,7 +25,7 @@ import (
 func TestClientConnFor(t *testing.T) {
 	t.Run("Config defaulting does not mutate original", func(t *testing.T) {
 		cfg := &Config{}
-		conn, err := ClientConnFor(cfg)
+		conn, err := ClientConnFor(context.Background(), cfg)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -49,24 +50,28 @@ func TestClientConnFor(t *testing.T) {
 
 	t.Run("Client creation respects WithLogger option", func(t *testing.T) {
 		cfg := &Config{Target: "unix:///tmp/test.sock"}
-		conn, err := ClientConnFor(cfg, WithLogger(logr.Discard()))
+		conn, err := ClientConnFor(context.Background(), cfg, WithLogger(logr.Discard()))
 		if err != nil {
 			t.Fatalf("failed to create client: %v", err)
 		}
 		conn.Close()
 	})
 
-	t.Run("Rejects non-unix target with insecure credentials", func(t *testing.T) {
+	t.Run("Rejects non-unix target", func(t *testing.T) {
 		cfg := &Config{
 			Target:    "dns:///localhost:8080",
 			UserAgent: "test/1.0",
 		}
-		_, err := ClientConnFor(cfg)
+
+		conn, err := ClientConnFor(context.Background(), cfg)
 		if err == nil {
-			t.Fatal("expected error for non-unix target with insecure credentials")
+			conn.Close()
+			t.Fatal("expected error for non-unix target, but got nil")
 		}
-		if !strings.Contains(err.Error(), "insecure credentials require unix://") {
-			t.Errorf("unexpected error message: %v", err)
+
+		expectedMsg := `must start with "unix://"`
+		if !strings.Contains(err.Error(), expectedMsg) {
+			t.Errorf("expected error message to contain %q, got: %v", expectedMsg, err)
 		}
 	})
 }

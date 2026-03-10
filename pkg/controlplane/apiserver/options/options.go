@@ -12,59 +12,73 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package options contains flags and options for initializing a device apiserver.
 package options
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"os"
 	"strings"
 	"time"
 
-	grpc "github.com/nvidia/nvsentinel/pkg/controlplane/apiserver/options/grpc"
+	nvgrpc "github.com/nvidia/nvsentinel/pkg/grpc/options"
 	storagebackend "github.com/nvidia/nvsentinel/pkg/storage/storagebackend/options"
 	nvvalidation "github.com/nvidia/nvsentinel/pkg/util/validation"
+	"google.golang.org/grpc"
 	"k8s.io/apimachinery/pkg/util/validation"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/logs"
 	logsapi "k8s.io/component-base/logs/api/v1"
 )
 
+const defaultBindAddress = "unix:///var/run/nvidia-device-api/device-api.sock"
+
+// Options define the flags and validation for a device controlplane.
 type Options struct {
 	NodeName             string
+	BindAddress          string
 	HealthAddress        string
 	ServiceMonitorPeriod time.Duration
 	MetricsAddress       string
 	ShutdownGracePeriod  time.Duration
+	EnablePprof          bool
+	PprofAddress         string
 
-	GRPC    *grpc.Options
+	GRPC    *nvgrpc.Options
 	Storage *storagebackend.Options
 	Logs    *logs.Options
 }
 
+// completedOptions is a private wrapper that enforces a call of Complete() before Run can be invoked.
 type completedOptions struct {
-	NodeName             string
-	HealthAddress        string
-	ServiceMonitorPeriod time.Duration
-	MetricsAddress       string
-	ShutdownGracePeriod  time.Duration
+	Options
 
-	GRPC    grpc.CompletedOptions
+	Server  []grpc.ServerOption
 	Storage storagebackend.CompletedOptions
-	Logs    *logs.Options
 }
 
 type CompletedOptions struct {
+	// Embed a private pointer that cannot be instantiated outside of this package.
 	*completedOptions
 }
 
+// NewOptions creates a new Server Options object with default parameters.
 func NewOptions() *Options {
+	grpcOpts := nvgrpc.NewOptions()
+
+	storageOpts := storagebackend.NewOptions()
+	storageOpts.GRPC = grpcOpts
+
 	return &Options{
+		BindAddress:          defaultBindAddress,
+		HealthAddress:        ":50051",
 		ServiceMonitorPeriod: 10 * time.Second,
+		MetricsAddress:       ":9090",
 		ShutdownGracePeriod:  25 * time.Second,
-		GRPC:                 grpc.NewOptions(),
-		Storage:              storagebackend.NewOptions(),
+		PprofAddress:         ":6060",
+		GRPC:                 grpcOpts,
+		Storage:              storageOpts,
 		Logs:                 logs.NewOptions(),
 	}
 }
@@ -77,92 +91,85 @@ func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 	genericFs := fss.FlagSet("generic")
 
 	genericFs.StringVar(&o.NodeName, "hostname-override", o.NodeName,
-		"If non-empty, will use this string as identification instead of the actual hostname. "+
-			"Must be a valid DNS subdomain.")
+		"If non-empty, will use this string as identification instead of the actual hostname. Must be a valid DNS subdomain.")
+
+	genericFs.StringVar(&o.BindAddress, "bind-address", o.BindAddress,
+		"The unix socket address on which to listen for gRPC requests. Must be a unix:// absolute path.")
 
 	genericFs.StringVar(&o.HealthAddress, "health-probe-bind-address", o.HealthAddress,
-		"The TCP address (IP:port) to serve gRPC health and reflection. "+
-			"If empty, defaults to :50051.")
+		"The TCP address (IP:port) to serve gRPC health and reflection. Defaults to ':50051'.")
 	genericFs.DurationVar(&o.ServiceMonitorPeriod, "service-monitor-period", o.ServiceMonitorPeriod,
-		"The period for syncing internal service status."+
-			"Must be between 0s and 1m.")
+		"The period for syncing internal service status. Must be between 0s and 1m.")
 
 	genericFs.StringVar(&o.MetricsAddress, "metrics-bind-address", o.MetricsAddress,
-		"The TCP address (IP:port) to serve HTTP metrics. "+
-			"If empty, defaults to :9090.")
+		"The TCP address (IP:port) to serve HTTP metrics. Defaults to ':9090'.")
 
 	genericFs.DurationVar(&o.ShutdownGracePeriod, "shutdown-grace-period", o.ShutdownGracePeriod,
-		"The maximum duration to wait for the server to shut down gracefully before forcing a stop. "+
-			"Must be between 0s and 10m.")
+		"The maximum duration to wait for the server to shut down gracefully before forcing a stop. Must be between 0s and 10m.")
+
+	debugFs := fss.FlagSet("debug")
+
+	debugFs.BoolVar(&o.EnablePprof, "enable-pprof", o.EnablePprof,
+		"Enable runtime profiling via pprof.")
+	debugFs.StringVar(&o.PprofAddress, "pprof-bind-address", o.PprofAddress,
+		"The address the pprof profiler should bind to. Defaults to ':6060'.")
 
 	o.GRPC.AddFlags(fss)
 	o.Storage.AddFlags(fss)
 	logsapi.AddFlags(o.Logs, fss.FlagSet("logs"))
 }
 
-//nolint:cyclop
-func (o *Options) Complete(ctx context.Context) (CompletedOptions, error) {
+func (o *Options) Complete() (CompletedOptions, error) {
 	if o == nil {
 		return CompletedOptions{completedOptions: &completedOptions{}}, nil
 	}
 
-	if o.NodeName == "" {
-		hostname, err := os.Hostname()
-		if err != nil || hostname == "" {
-			hostname = os.Getenv("NODE_NAME")
+	completed := completedOptions{
+		Options: *o,
+	}
+
+	nodeName := o.NodeName
+	if nodeName == "" {
+		if envNodeName := os.Getenv("NODE_NAME"); envNodeName != "" {
+			nodeName = envNodeName
+		} else {
+			var err error
+			nodeName, err = os.Hostname()
+			if err != nil {
+				return CompletedOptions{}, fmt.Errorf("failed to resolve hostname: %w", err)
+			}
 		}
-
-		o.NodeName = hostname
 	}
-	o.NodeName = strings.ToLower(strings.TrimSpace(o.NodeName)) //nolint:wsl
+	completed.NodeName = strings.ToLower(strings.TrimSpace(nodeName))
 
-	if o.HealthAddress == "" {
-		// Default binds to all interfaces for Kubernetes kubelet health probes.
-		// Use NetworkPolicy to restrict access in production.
-		o.HealthAddress = ":50051"
-	}
-
-	if o.ServiceMonitorPeriod == 0 {
-		o.ServiceMonitorPeriod = 10 * time.Second
-	}
-
-	if o.MetricsAddress == "" {
-		// Default binds to all interfaces for Prometheus scraping.
-		// Use NetworkPolicy to restrict access in production.
-		o.MetricsAddress = ":9090"
-	}
-
-	if o.ShutdownGracePeriod == 0 {
-		o.ShutdownGracePeriod = 25 * time.Second
-	}
+	completed.BindAddress = o.BindAddress
+	completed.HealthAddress = o.HealthAddress
+	completed.ServiceMonitorPeriod = o.ServiceMonitorPeriod
+	completed.MetricsAddress = o.MetricsAddress
+	completed.ShutdownGracePeriod = o.ShutdownGracePeriod
+	completed.EnablePprof = o.EnablePprof
+	completed.PprofAddress = o.PprofAddress
 
 	completedGRPC, err := o.GRPC.Complete()
 	if err != nil {
-		return CompletedOptions{}, err
+		return CompletedOptions{}, fmt.Errorf("failed to complete grpc options: %w", err)
+	}
+
+	if err := completedGRPC.ApplyTo(&completed.Server); err != nil {
+		return CompletedOptions{}, fmt.Errorf("failed to apply grpc options: %w", err)
 	}
 
 	completedStorage, err := o.Storage.Complete()
 	if err != nil {
-		return CompletedOptions{}, err
+		return CompletedOptions{}, fmt.Errorf("failed to complete storage options: %w", err)
 	}
-
-	completed := completedOptions{
-		NodeName:             o.NodeName,
-		HealthAddress:        o.HealthAddress,
-		ServiceMonitorPeriod: o.ServiceMonitorPeriod,
-		MetricsAddress:       o.MetricsAddress,
-		ShutdownGracePeriod:  o.ShutdownGracePeriod,
-		GRPC:                 completedGRPC,
-		Logs:                 o.Logs,
-		Storage:              completedStorage,
-	}
+	completed.Storage = completedStorage
 
 	return CompletedOptions{
 		completedOptions: &completed,
 	}, nil
 }
 
-//nolint:gocyclo,cyclop
 func (o *CompletedOptions) Validate() []error {
 	if o == nil {
 		return nil
@@ -171,62 +178,89 @@ func (o *CompletedOptions) Validate() []error {
 	allErrors := []error{}
 
 	if o.NodeName == "" {
-		allErrors = append(allErrors, fmt.Errorf("hostname-override: required"))
+		allErrors = append(allErrors, fmt.Errorf("--hostname-override: required"))
 	} else {
 		if validationErrors := validation.IsDNS1123Subdomain(o.NodeName); len(validationErrors) > 0 {
 			for _, errDesc := range validationErrors {
-				allErrors = append(allErrors, fmt.Errorf("hostname-override %q: %s", o.NodeName, errDesc))
+				allErrors = append(allErrors, fmt.Errorf("--hostname-override %q: %s", o.NodeName, errDesc))
+			}
+		}
+	}
+
+	if o.BindAddress == "" {
+		allErrors = append(allErrors, fmt.Errorf("--bind-address: required"))
+	} else {
+		if validationErrors := nvvalidation.IsUnixSocketURI(o.BindAddress); len(validationErrors) > 0 {
+			for _, errDesc := range validationErrors {
+				allErrors = append(allErrors, fmt.Errorf("--bind-address %q: %s", o.BindAddress, errDesc))
 			}
 		}
 	}
 
 	if o.HealthAddress == "" {
-		allErrors = append(allErrors, fmt.Errorf("health-probe-bind-address: required"))
+		allErrors = append(allErrors, fmt.Errorf("--health-probe-bind-address: required"))
 	} else {
 		if validationErrors := nvvalidation.IsTCPAddress(o.HealthAddress); len(validationErrors) > 0 {
 			for _, errDesc := range validationErrors {
-				allErrors = append(allErrors, fmt.Errorf("health-probe-bind-address %q: %s", o.HealthAddress, errDesc))
+				allErrors = append(allErrors, fmt.Errorf("--health-probe-bind-address %q: %s", o.HealthAddress, errDesc))
 			}
 		}
 	}
 
 	if o.ServiceMonitorPeriod < 0 {
-		allErrors = append(allErrors,
-			fmt.Errorf("service-monitor-period: %v must be greater than or equal to 0s",
-				o.ServiceMonitorPeriod))
+		allErrors = append(allErrors, fmt.Errorf("--service-monitor-period %v: must be greater than or equal to 0s", o.ServiceMonitorPeriod))
 	} else if o.ServiceMonitorPeriod > 1*time.Minute {
-		allErrors = append(allErrors,
-			fmt.Errorf("service-monitor-period: %v must be 1m or less",
-				o.ServiceMonitorPeriod))
+		allErrors = append(allErrors, fmt.Errorf("--service-monitor-period %v: must be 1m or less", o.ServiceMonitorPeriod))
 	}
 
 	if o.MetricsAddress != "" {
 		if validationErrors := nvvalidation.IsTCPAddress(o.MetricsAddress); len(validationErrors) > 0 {
 			for _, errDesc := range validationErrors {
-				allErrors = append(allErrors, fmt.Errorf("metrics-bind-address %q: %s", o.MetricsAddress, errDesc))
+				allErrors = append(allErrors, fmt.Errorf("--metrics-bind-address %q: %s", o.MetricsAddress, errDesc))
 			}
 		}
 	}
 
-	if o.HealthAddress != "" && o.MetricsAddress != "" {
-		_, healthPort, _ := net.SplitHostPort(o.HealthAddress)
-		_, metricsPort, _ := net.SplitHostPort(o.MetricsAddress)
+	if o.ShutdownGracePeriod < 0 {
+		allErrors = append(allErrors, fmt.Errorf("--shutdown-grace-period %v: must be greater than or equal to 0s", o.ShutdownGracePeriod))
+	} else if o.ShutdownGracePeriod > 10*time.Minute {
+		allErrors = append(allErrors, fmt.Errorf("--shutdown-grace-period %v: must be 10m or less", o.ShutdownGracePeriod))
+	}
 
-		if healthPort != "" && healthPort == metricsPort {
-			allErrors = append(allErrors,
-				fmt.Errorf("health-probe-bind-address and metrics-bind-address: must not use the same port (%s)",
-					healthPort))
+	if o.EnablePprof && o.PprofAddress == "" {
+		allErrors = append(allErrors, fmt.Errorf("--pprof-bind-address: required"))
+	}
+
+	if o.EnablePprof && o.PprofAddress != "" {
+		if validationErrors := nvvalidation.IsTCPAddress(o.PprofAddress); len(validationErrors) > 0 {
+			for _, errDesc := range validationErrors {
+				allErrors = append(allErrors, fmt.Errorf("--pprof-bind-address %q: %s", o.PprofAddress, errDesc))
+			}
 		}
 	}
 
-	if o.ShutdownGracePeriod < 0 {
-		allErrors = append(allErrors,
-			fmt.Errorf("shutdown-grace-period: %v must be greater than or equal to 0s",
-				o.ShutdownGracePeriod))
-	} else if o.ShutdownGracePeriod > 10*time.Minute {
-		allErrors = append(allErrors,
-			fmt.Errorf("shutdown-grace-period: %v must be 10m or less",
-				o.ShutdownGracePeriod))
+	addresses := map[string]string{
+		"--health-probe-bind-address": o.HealthAddress,
+		"--metrics-bind-address":      o.MetricsAddress,
+	}
+	if o.EnablePprof {
+		addresses["--pprof-bind-address"] = o.PprofAddress
+	}
+
+	ports := make(map[string]string)
+	for name, addr := range addresses {
+		if addr == "" {
+			continue
+		}
+		_, port, err := net.SplitHostPort(addr)
+		if err == nil {
+			for otherName, otherPort := range ports {
+				if port == otherPort {
+					allErrors = append(allErrors, fmt.Errorf("%s and %s: must not use the same port %q", name, otherName, port))
+				}
+			}
+			ports[name] = port
+		}
 	}
 
 	allErrors = append(allErrors, o.GRPC.Validate()...)
