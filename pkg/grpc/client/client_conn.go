@@ -26,7 +26,7 @@ import (
 )
 
 // ClientConnFor creates a new gRPC connection using the provided configuration and options.
-func ClientConnFor(ctx context.Context, config *Config, opts ...DialOption) (*grpc.ClientConn, error) {
+func ClientConnFor(config *Config, opts ...DialOption) (*grpc.ClientConn, error) {
 	cfg := *config // Shallow copy to avoid mutation
 
 	dOpts := &dialOptions{}
@@ -50,6 +50,10 @@ func ClientConnFor(ctx context.Context, config *Config, opts ...DialOption) (*gr
 		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", strings.TrimPrefix(cfg.Target, "unix://"))
 		}),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(1<<24), // 16MiB
+			grpc.MaxCallSendMsgSize(2<<20), // 2MiB
+		),
 		grpc.WithDefaultServiceConfig(`{
             "methodConfig": [{
                 "name": [{"service": ""}], 
@@ -57,9 +61,13 @@ func ClientConnFor(ctx context.Context, config *Config, opts ...DialOption) (*gr
                 "retryPolicy": {
                     "maxAttempts": 5,
                     "initialBackoff": "0.1s",
-                    "maxBackoff": "1s",
+                    "maxBackoff": "10s",
                     "backoffMultiplier": 2.0,
-                    "retryableStatusCodes": ["UNAVAILABLE"]
+                    "retryableStatusCodes": [
+						"UNAVAILABLE",
+						"RESOURCE_EXHAUSTED",
+						"INTERNAL"
+					]
                 }
             }]
         }`),
@@ -88,11 +96,6 @@ func ClientConnFor(ctx context.Context, config *Config, opts ...DialOption) (*gr
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gRPC client for %s: %w", cfg.Target, err)
 	}
-
-	go func() {
-		<-ctx.Done()
-		conn.Close()
-	}()
 
 	return conn, nil
 }

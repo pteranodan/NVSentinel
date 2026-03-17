@@ -24,7 +24,7 @@ import (
 
 	"github.com/nvidia/nvsentinel/cmd/device-apiserver/app"
 	"github.com/nvidia/nvsentinel/cmd/device-apiserver/app/options"
-	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
+	"github.com/nvidia/nvsentinel/pkg/client-go/clientset"
 	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 	"github.com/nvidia/nvsentinel/pkg/util/test"
 	"google.golang.org/grpc/grpclog"
@@ -36,20 +36,22 @@ func init() {
 }
 
 type TestServerOptions struct {
-	StorageBackend      string
-	CompactionInterval  time.Duration
-	CompactionMinRetain int64
+	StorageType                 string
+	WatchProgressNotifyInterval time.Duration
+	CompactionInterval          time.Duration
+	CompactionMinRetain         int64
 }
 
-func SetupServer(t *testing.T, storageBackend string) (versioned.Interface, func()) {
+func SetupServer(t *testing.T, storageType string) (clientset.Interface, func()) {
 	return SetupServerWithOptions(t, TestServerOptions{
-		StorageBackend:      storageBackend,
-		CompactionInterval:  5 * time.Minute,
-		CompactionMinRetain: 1000,
+		StorageType:                 storageType,
+		WatchProgressNotifyInterval: 5 * time.Minute,
+		CompactionInterval:          5 * time.Minute,
+		CompactionMinRetain:         1000,
 	})
 }
 
-func SetupServerWithOptions(t *testing.T, opts TestServerOptions) (versioned.Interface, func()) {
+func SetupServerWithOptions(t *testing.T, opts TestServerOptions) (clientset.Interface, func()) {
 	t.Helper()
 
 	serverCtx, serverCancel := context.WithCancel(context.Background())
@@ -71,11 +73,15 @@ func SetupServerWithOptions(t *testing.T, opts TestServerOptions) (versioned.Int
 	svrOpts.HealthAddress = healthAddr
 	svrOpts.ShutdownGracePeriod = 1 * time.Second
 
-	if opts.StorageBackend == "memory" {
-		svrOpts.Storage.StorageBackend = "memory"
+	if opts.StorageType == "memory" {
+		svrOpts.Storage.Type = "memory"
 	} else {
+		svrOpts.Storage.Type = "etcd3"
+		svrOpts.Storage.EtcdVersion = "3.5.13"
+		svrOpts.Storage.EtcdWatchProgressNotifyInterval = opts.WatchProgressNotifyInterval
+
 		dbFile := filepath.Join(tmpDir, "state.db")
-		svrOpts.Storage.DatabasePath = "sqlite://" + dbFile
+		svrOpts.Storage.Endpoint = "sqlite://" + dbFile
 	}
 
 	completed, err := svrOpts.Complete()
@@ -92,7 +98,7 @@ func SetupServerWithOptions(t *testing.T, opts TestServerOptions) (versioned.Int
 	test.WaitForStatus(t, healthAddr, "", 10*time.Second, test.IsServing)
 
 	config := &client.Config{Target: "unix://" + apiSocket}
-	cs, err := versioned.NewForConfig(serverCtx, config)
+	cs, err := clientset.NewForConfig(config)
 	if err != nil {
 		serverCancel()
 		os.RemoveAll(socketDir)
@@ -100,6 +106,7 @@ func SetupServerWithOptions(t *testing.T, opts TestServerOptions) (versioned.Int
 	}
 
 	teardown := func() {
+		cs.Close()
 		serverCancel()
 		select {
 		case err := <-serverErrCh:

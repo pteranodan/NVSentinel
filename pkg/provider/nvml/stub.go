@@ -25,7 +25,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
+	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/clientset/typed/device/v1alpha1"
 )
 
 // ErrNVMLNotCompiled is returned when NVML support is not compiled into the binary.

@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// TODO: update test cases
 package options_test
 
 import (
-	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -87,11 +85,11 @@ func TestComplete(t *testing.T) {
 			t.Errorf("expected default streams 100, got %d", completed.MaxConcurrentStreams)
 		}
 
-		if completed.MaxRecvMsgSize != 4194304 {
-			t.Errorf("expected default recv size 4MiB, got %d", completed.MaxRecvMsgSize)
+		if completed.MaxRecvMsgSize != 2<<20 {
+			t.Errorf("expected default recv size 2MiB, got %d", completed.MaxRecvMsgSize)
 		}
-		if completed.MaxSendMsgSize != math.MaxInt32 {
-			t.Errorf("expected default send size MaxInt32, got %d", completed.MaxSendMsgSize)
+		if completed.MaxSendMsgSize != 1<<24 {
+			t.Errorf("expected default send size 16MiB, got %d", completed.MaxSendMsgSize)
 		}
 		if completed.WriteBufferSize != 32768 {
 			t.Errorf("expected default write buffer 32KiB, got %d", completed.WriteBufferSize)
@@ -107,11 +105,21 @@ func TestComplete(t *testing.T) {
 			t.Errorf("expected default connection window 65535, got %d", completed.InitialConnectionWindowSize)
 		}
 
+		if completed.MaxConnectionAge != 0 {
+			t.Errorf("expected default max connection age infinity (disabled), got %s", completed.MaxConnectionAge)
+		}
+		if completed.MaxConnectionAgeGrace != 0 {
+			t.Errorf("expected default max connection age grace infinity (disabled), got %s", completed.MaxConnectionAgeGrace)
+		}
+		if completed.MaxConnectionIdle != 0 {
+			t.Errorf("expected default max connection idle infinity (disabled), got %s", completed.MaxConnectionIdle)
+		}
+
 		if completed.KeepAliveTime != 1*time.Minute {
 			t.Errorf("expected default keepalive time 1m, got %v", completed.KeepAliveTime)
 		}
-		if completed.KeepAliveTimeout != 10*time.Second {
-			t.Errorf("expected default keepalive timeout 10s, got %v", completed.KeepAliveTimeout)
+		if completed.KeepAliveTimeout != 20*time.Second {
+			t.Errorf("expected default keepalive timeout 20s, got %v", completed.KeepAliveTimeout)
 		}
 		if completed.MinPingInterval != 5*time.Second {
 			t.Errorf("expected default min ping 5s, got %v", completed.MinPingInterval)
@@ -158,12 +166,86 @@ func TestValidate(t *testing.T) {
 			errContains: "must be at least 1024",
 		},
 		{
+			name: "MaxSendMsgSize below minimum",
+			modify: func(o *grpcopts.Options) {
+				o.MaxSendMsgSize = 512
+			},
+			wantErr:     true,
+			errContains: "must be at least 1024",
+		},
+		{
+			name: "WriteBufferSize negative",
+			modify: func(o *grpcopts.Options) {
+				o.WriteBufferSize = -1
+			},
+			wantErr:     true,
+			errContains: "must be between 0",
+		},
+		{
+			name: "ReadBufferSize negative",
+			modify: func(o *grpcopts.Options) {
+				o.ReadBufferSize = -1
+			},
+			wantErr:     true,
+			errContains: "must be between 0",
+		},
+		{
 			name: "Initial Window Size too small",
 			modify: func(o *grpcopts.Options) {
 				o.InitialWindowSize = 100
 			},
 			wantErr:     true,
 			errContains: "must be between 65535",
+		},
+		{
+			name: "InitialWindowSize too small",
+			modify: func(o *grpcopts.Options) {
+				o.InitialWindowSize = 1024
+			},
+			wantErr:     true,
+			errContains: "must be between 65535",
+		},
+		{
+			name: "InitialConnectionWindowSize too small",
+			modify: func(o *grpcopts.Options) {
+				o.InitialConnectionWindowSize = 1024
+			},
+			wantErr:     true,
+			errContains: "must be between 65535",
+		},
+		{
+			name: "MaxConnectionAge too aggressive",
+			modify: func(o *grpcopts.Options) {
+				o.MaxConnectionAge = 5 * time.Second
+			},
+			wantErr:     true,
+			errContains: "must be at least 10s",
+		},
+		{
+			name: "MaxConnectionAge Grace too small",
+			modify: func(o *grpcopts.Options) {
+				o.MaxConnectionAgeGrace = 2 * time.Second
+			},
+			wantErr:     true,
+			errContains: "must be at least 5s",
+		},
+		{
+			name: "MaxConnectionAge Grace exceeding MaxConnectionAge",
+			modify: func(o *grpcopts.Options) {
+				o.MaxConnectionAge = 20 * time.Second
+				o.MaxConnectionAgeGrace = 30 * time.Second
+			},
+			wantErr:     true,
+			errContains: "must be less than --grpc-max-connection-age",
+		},
+		{
+			name: "MaxConnectionIdle exceeding MaxConnectionAge",
+			modify: func(o *grpcopts.Options) {
+				o.MaxConnectionAge = 20 * time.Second
+				o.MaxConnectionIdle = 25 * time.Second
+			},
+			wantErr:     true,
+			errContains: "must be less than --grpc-max-connection-age",
 		},
 		{
 			name: "Keepalive Timeout too high relative to Keepalive Time",

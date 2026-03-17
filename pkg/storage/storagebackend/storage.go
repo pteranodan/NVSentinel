@@ -40,7 +40,7 @@ const storageTypeMemory = "memory"
 // that can be run to start the underlying data store that backs the API server.
 type Storage struct {
 	StorageConfig apistorage.Config
-	DatabaseDir   string
+	StorageDir    string
 	SocketPath    string
 	KineConfig    endpoint.Config
 
@@ -56,7 +56,7 @@ type preparedStorage struct {
 func (c *CompletedConfig) New() (*Storage, error) {
 	return &Storage{
 		StorageConfig: c.StorageConfig,
-		DatabaseDir:   c.DatabaseDir,
+		StorageDir:    c.StorageDir,
 		SocketPath:    c.SocketPath,
 		KineConfig:    c.KineConfig,
 	}, nil
@@ -76,14 +76,14 @@ func (s *Storage) PrepareRun() (preparedStorage, error) {
 }
 
 func (s *Storage) prepareFilesystem() error {
-	if err := os.MkdirAll(s.DatabaseDir, 0770); err != nil {
+	if err := os.MkdirAll(s.StorageDir, 0770); err != nil {
 		return fmt.Errorf("failed to create storage data directory: %w", err)
 	}
-	if err := os.Chmod(s.DatabaseDir, 0770); err != nil {
+	if err := os.Chmod(s.StorageDir, 0770); err != nil {
 		return fmt.Errorf("failed to secure storage data directory: %w", err)
 	}
-	if err := filesystemutils.CheckPermissions(s.DatabaseDir); err != nil {
-		return fmt.Errorf("storage data directory %q: %w", s.DatabaseDir, err)
+	if err := filesystemutils.CheckPermissions(s.StorageDir); err != nil {
+		return fmt.Errorf("storage data directory %q: %w", s.StorageDir, err)
 	}
 
 	socketPath := strings.TrimPrefix(s.SocketPath, "unix://")

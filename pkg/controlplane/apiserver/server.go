@@ -348,7 +348,6 @@ func (s *Server) serveHealth(ctx context.Context) {
 		logger.Error(err, "Failed to listen on health port", "address", s.HealthAddress)
 		return
 	}
-	logger.Info("TCP Health listener officially bound", "address", s.HealthAddress)
 
 	// Shutdown listener immediately on cancellation
 	// to unblock Serve and reject new conns.

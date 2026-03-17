@@ -31,16 +31,16 @@ import (
 
 func TestWatchFromResourceVersion(t *testing.T) {
 	testCases := []struct {
-		name           string
-		storageBackend string
+		name        string
+		storageType string
 	}{
-		{name: "OnDisk", storageBackend: apistorage.StorageTypeETCD3},
-		{name: "InMemory", storageBackend: "memory"},
+		{name: "OnDisk", storageType: apistorage.StorageTypeETCD3},
+		{name: "InMemory", storageType: "memory"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			clientset, teardown := framework.SetupServer(t, tc.storageBackend)
+			clientset, teardown := framework.SetupServer(t, tc.storageType)
 			defer teardown()
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -83,7 +83,7 @@ func TestWatchFromResourceVersion(t *testing.T) {
 				}
 
 				if event.Type == watch.Error {
-					if tc.storageBackend == "memory" {
+					if tc.storageType == "memory" {
 						framework.SkipWithWarning(t, fmt.Sprintf("received error event %v", event.Object))
 					}
 

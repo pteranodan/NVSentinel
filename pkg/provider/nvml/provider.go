@@ -35,7 +35,7 @@ import (
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"k8s.io/klog/v2"
 
-	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
+	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/device/typed/device/v1alpha1"
 )
 
 // Provider is the built-in NVML-based health provider.

@@ -20,8 +20,8 @@
 - [ ] fix lint errors
 - [ ] update docs
 - [ ] perf testing: new make target, build script (hack/perf.sh), automated cluster creation, deployment, execution
+- [ ] wrap make code-gen with consistent logs
 - [ ] update/verify examples work post refactor
-- [ ] complete grpc & storage options tests w/ additional flags
 
 ---
 
@@ -36,6 +36,7 @@
 - [x] admin interface
 - [x] version metric
 - [x] version endpoint
+- [ ] clean up gRPC error handling
 - [ ] datastore
   - [ ] ?export db size metric?
   - [ ] ?server-side cache?

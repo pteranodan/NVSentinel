@@ -85,9 +85,9 @@ func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 		"The maximum number of concurrent streams allowed per connection. Must be between 1 and 10000.")
 
 	grpcFs.IntVar(&o.MaxRecvMsgSize, "grpc-max-recv-msg-size", o.MaxRecvMsgSize,
-		"The maximum message size in bytes the server can receive. Set to 0 to use gRPC default (4MiB). Must be at least 1024 bytes.")
+		"The maximum message size in bytes the server can receive. Must be at least 1024 bytes.")
 	grpcFs.IntVar(&o.MaxSendMsgSize, "grpc-max-send-msg-size", o.MaxSendMsgSize,
-		"The maximum message size in bytes the server can send. Set to 0 to use gRPC default (unlimited). Must be at least 1024 bytes.")
+		"The maximum message size in bytes the server can send. Must be at least 1024 bytes.")
 	grpcFs.IntVar(&o.WriteBufferSize, "grpc-write-buffer-size", o.WriteBufferSize,
 		fmt.Sprintf("Size of the gRPC write buffer in bytes. Set to 0 to use gRPC default (32KiB). Must be between 0 and %d.", math.MaxInt32))
 	grpcFs.BoolVar(&o.SharedWriteBuffer, "grpc-shared-write-buffer", o.SharedWriteBuffer,
@@ -100,9 +100,9 @@ func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 		fmt.Sprintf("The initial HTTP/2 connection-level flow control window size in bytes. Set to 0 to use gRPC default (65535). Must be between 65535 and %d.", math.MaxInt32))
 
 	grpcFs.DurationVar(&o.MaxConnectionAge, "grpc-max-connection-age", o.MaxConnectionAge,
-		"The maximum amount of time a connection may exist before being closed by the server. Must be at least 10s.")
+		"The maximum amount of time a connection may exist before being closed by the server. Must be at least 10s or set to 0 to disable (infinity).")
 	grpcFs.DurationVar(&o.MaxConnectionAgeGrace, "grpc-max-connection-age-grace", o.MaxConnectionAgeGrace,
-		"An additive period after the maximum connection age after which the connection will be forcible closed by the server. Must be at least 5s.")
+		"An additive period after the maximum connection age after which the connection will be forcible closed by the server. Must be at least 5s or set to 0 to disable (infinity).")
 	grpcFs.DurationVar(&o.MaxConnectionIdle, "grpc-max-connection-idle", o.MaxConnectionIdle,
 		"The maximum amount of time a connection may be idle before being closed by the server. Must be at least 5s or set to 0 to disable (infinity).")
 	grpcFs.DurationVar(&o.KeepAliveTime, "grpc-keepalive-time", o.KeepAliveTime,
@@ -127,11 +127,11 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	}
 
 	if o.MaxRecvMsgSize == 0 {
-		completed.MaxRecvMsgSize = 4194304 // 4MiB
+		completed.MaxRecvMsgSize = 2 << 20 // 2MiB
 	}
 
 	if o.MaxSendMsgSize == 0 {
-		completed.MaxSendMsgSize = math.MaxInt32
+		completed.MaxSendMsgSize = 1 << 24 // 16MiB
 	}
 
 	if o.WriteBufferSize == 0 {
@@ -155,7 +155,7 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	}
 
 	if o.KeepAliveTimeout == 0 {
-		completed.KeepAliveTimeout = 10 * time.Second
+		completed.KeepAliveTimeout = 20 * time.Second
 	}
 
 	if o.MinPingInterval == 0 {
@@ -202,15 +202,15 @@ func (o *Options) Validate() []error {
 		allErrors = append(allErrors, fmt.Errorf("--grpc-initial-connection-window-size %d: must be between 65535 and %d", o.InitialConnectionWindowSize, math.MaxInt32))
 	}
 
-	if o.MaxConnectionAge < 10*time.Second {
+	if o.MaxConnectionAge != 0 && o.MaxConnectionAge < 10*time.Second {
 		allErrors = append(allErrors, fmt.Errorf("--grpc-max-connection-age %v: must be at least 10s", o.MaxConnectionAge))
 	}
 
-	if o.MaxConnectionAgeGrace < 5*time.Second {
+	if o.MaxConnectionAgeGrace != 0 && o.MaxConnectionAgeGrace < 5*time.Second {
 		allErrors = append(allErrors, fmt.Errorf("--grpc-max-connection-age-grace %v: must be at least 5s", o.MaxConnectionAgeGrace))
 	}
 
-	if o.MaxConnectionAgeGrace > o.MaxConnectionAge {
+	if o.MaxConnectionAge != 0 && o.MaxConnectionAgeGrace > o.MaxConnectionAge {
 		allErrors = append(allErrors, fmt.Errorf("--grpc-max-connection-age-grace %v: must be less than --grpc-max-connection-age %v", o.MaxConnectionAgeGrace, o.MaxConnectionAge))
 	}
 
@@ -218,7 +218,7 @@ func (o *Options) Validate() []error {
 		allErrors = append(allErrors, fmt.Errorf("--grpc-max-connection-idle %v: must be at least 5s", o.MaxConnectionIdle))
 	}
 
-	if o.MaxConnectionIdle > o.MaxConnectionAge {
+	if o.MaxConnectionAge != 0 && o.MaxConnectionIdle > o.MaxConnectionAge {
 		allErrors = append(allErrors, fmt.Errorf("--grpc-max-connection-idle %v: must be less than --grpc-max-connection-age %v", o.MaxConnectionIdle, o.MaxConnectionAge))
 	}
 

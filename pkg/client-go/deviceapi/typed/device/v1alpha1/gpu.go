@@ -53,14 +53,16 @@ type GPUInterface interface {
 // gpus implements GPUInterface
 type gpus struct {
 	client pb.GpuServiceClient
+	devicev1alpha1.Converter
 	logger logr.Logger
 }
 
 // newGPUs returns a gpus
 func newGPUs(c *DeviceV1alpha1Client) *gpus {
 	return &gpus{
-		client: pb.NewGpuServiceClient(c.ClientConn()),
-		logger: c.logger.WithName("gpus"),
+		client:    pb.NewGpuServiceClient(c.ClientConn()),
+		Converter: &devicev1alpha1.ConverterImpl{},
+		logger:    c.logger.WithName("gpus"),
 	}
 }
 
@@ -72,17 +74,39 @@ func (c *gpus) getNamespace() *string {
 	return &ns
 }
 
+func (c *gpus) fromProto(p *pb.Gpu) *devicev1alpha1.GPU {
+	if p == nil {
+		return nil
+	}
+	obj := c.FromProto(p)
+	obj.Default()
+	return obj
+}
+
+func (c *gpus) fromProtoList(p *pb.GpuList) *devicev1alpha1.GPUList {
+	if p == nil {
+		return nil
+	}
+	obj := &devicev1alpha1.GPUList{
+		ListMeta: c.FromProtoListMeta(p.ListMeta),
+	}
+	for _, item := range p.Items {
+		obj.Items = append(obj.Items, *c.fromProto(item))
+	}
+	return obj
+}
+
 func (c *gpus) Get(ctx context.Context, name string, opts v1.GetOptions) (*devicev1alpha1.GPU, error) {
 	resp, err := c.client.GetGpu(ctx, &pb.GetGpuRequest{
 		Name:      name,
 		Namespace: c.getNamespace(),
-		Opts:      devicev1alpha1.ToProtoGetOptions(opts),
+		Opts:      c.ToProtoGetOptions(&opts),
 	})
 	if err != nil {
 		return nil, errors.NewAPIError(err, "gpus", name)
 	}
 
-	obj := devicev1alpha1.FromProto(resp.GetGpu())
+	obj := c.fromProto(resp.GetGpu())
 	c.logger.V(6).Info("Fetched GPU",
 		"name", name,
 		"namespace", c.getNamespace(),
@@ -94,29 +118,22 @@ func (c *gpus) Get(ctx context.Context, name string, opts v1.GetOptions) (*devic
 }
 
 func (c *gpus) List(ctx context.Context, opts v1.ListOptions) (*devicev1alpha1.GPUList, error) {
-	if opts.LabelSelector != "" || opts.FieldSelector != "" {
+	if opts.FieldSelector != "" {
 		return nil, apierrors.NewBadRequest("selectors are not supported for this resource")
 	}
 	if opts.Limit > 0 || opts.Continue != "" {
 		return nil, apierrors.NewBadRequest("pagination (limit/continue) is not supported for this resource")
 	}
 
-	if opts.AllowWatchBookmarks {
-		c.logger.V(6).Info("Ignoring unsupported list option", "option", "allowWatchBookmarks")
-	}
-	if opts.SendInitialEvents != nil {
-		c.logger.V(6).Info("Ignoring unsupported list option", "option", "sendInitialEvents")
-	}
-
 	resp, err := c.client.ListGpus(ctx, &pb.ListGpusRequest{
 		Namespace: c.getNamespace(),
-		Opts:      devicev1alpha1.ToProtoListOptions(opts),
+		Opts:      c.ToProtoListOptions(&opts),
 	})
 	if err != nil {
 		return nil, errors.NewAPIError(err, "gpus", "")
 	}
 
-	list := devicev1alpha1.FromProtoList(resp.GetGpuList())
+	list := c.FromProtoList(resp.GetGpuList())
 	c.logger.V(5).Info("Listed GPUs",
 		"namespace", c.getNamespace(),
 		"count", len(list.Items),
@@ -127,52 +144,60 @@ func (c *gpus) List(ctx context.Context, opts v1.ListOptions) (*devicev1alpha1.G
 }
 
 func (c *gpus) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	if opts.LabelSelector != "" || opts.FieldSelector != "" {
+	if opts.FieldSelector != "" {
 		return nil, apierrors.NewBadRequest("selectors are not supported for this resource")
 	}
 	if opts.Limit > 0 || opts.Continue != "" {
 		return nil, apierrors.NewBadRequest("pagination (limit/continue) is not supported for this resource")
 	}
 
-	if opts.AllowWatchBookmarks {
-		c.logger.V(6).Info("Ignoring unsupported list option", "option", "allowWatchBookmarks")
-	}
-	if opts.SendInitialEvents != nil {
-		c.logger.V(6).Info("Ignoring unsupported list option", "option", "sendInitialEvents")
+	if opts.SendInitialEvents != nil && *opts.SendInitialEvents == true {
+		if opts.ResourceVersionMatch != v1.ResourceVersionMatchNotOlderThan {
+			return nil, apierrors.NewBadRequest("resourceVersionMatch must be NotOlderThan when sendInitialEvents is true")
+		}
 	}
 
 	c.logger.V(4).Info("Opening watch stream",
+		"watch", opts.Watch,
+		"allowWatchBookmarks", opts.AllowWatchBookmarks,
 		"resource", "gpus",
 		"namespace", c.getNamespace(),
 		"resource-version", opts.ResourceVersion,
 		"timeout-seconds", opts.TimeoutSeconds,
+		"sendInitialEvents", func(b *bool) any {
+			if b == nil {
+				return "nil"
+			}
+			return *b
+		}(opts.SendInitialEvents),
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
 	stream, err := c.client.WatchGpus(ctx, &pb.WatchGpusRequest{
 		Namespace: c.getNamespace(),
-		Opts:      devicev1alpha1.ToProtoListOptions(opts),
+		Opts:      c.ToProtoListOptions(&opts),
 	})
 	if err != nil {
 		cancel()
 		return nil, errors.NewAPIError(err, "gpus", "")
 	}
 
-	return client.NewWatcher(&gpusStreamAdapter{stream: stream}, cancel, c.logger), nil
+	return client.NewWatcher(&gpusStreamAdapter{stream: stream, Converter: c.Converter}, cancel, c.logger), nil
 }
 
 // gpusStreamAdapter wraps the GPU gRPC stream to provide events.
 type gpusStreamAdapter struct {
 	stream pb.GpuService_WatchGpusClient
+	devicev1alpha1.Converter
 }
 
 func (a *gpusStreamAdapter) Next() (string, runtime.Object, error) {
 	resp, err := a.stream.Recv()
 	if err != nil {
-		return "", nil, err
+		return string(watch.Error), nil, err
 	}
 
-	obj := devicev1alpha1.FromProto(resp.GetObject())
+	obj := a.FromProto(resp.GetObject())
 
 	return resp.GetType(), obj, nil
 }
@@ -194,14 +219,14 @@ func (c *gpus) Create(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.Crea
 	}
 
 	resp, err := c.client.CreateGpu(ctx, &pb.CreateGpuRequest{
-		Gpu:  devicev1alpha1.ToProto(gpu),
+		Gpu:  c.ToProto(gpu),
 		Opts: &pb.CreateOptions{},
 	})
 	if err != nil {
 		return nil, errors.NewAPIError(err, "gpus", gpu.GetName())
 	}
 
-	obj := devicev1alpha1.FromProto(resp)
+	obj := c.fromProto(resp)
 	c.logger.V(2).Info("Created GPU",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
@@ -225,14 +250,14 @@ func (c *gpus) Update(ctx context.Context, gpu *devicev1alpha1.GPU, opts v1.Upda
 	}
 
 	resp, err := c.client.UpdateGpu(ctx, &pb.UpdateGpuRequest{
-		Gpu:  devicev1alpha1.ToProto(gpu),
-		Opts: devicev1alpha1.ToProtoUpdateOptions(opts),
+		Gpu:  c.ToProto(gpu),
+		Opts: c.ToProtoUpdateOptions(&opts),
 	})
 	if err != nil {
 		return nil, errors.NewAPIError(err, "gpus", gpu.GetName())
 	}
 
-	obj := devicev1alpha1.FromProto(resp)
+	obj := c.fromProto(resp)
 	c.logger.V(2).Info("Updated GPU",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
@@ -256,14 +281,14 @@ func (c *gpus) UpdateStatus(ctx context.Context, gpu *devicev1alpha1.GPU, opts v
 	}
 
 	resp, err := c.client.UpdateGpuStatus(ctx, &pb.UpdateGpuStatusRequest{
-		Gpu:  devicev1alpha1.ToProto(gpu),
-		Opts: devicev1alpha1.ToProtoUpdateOptions(opts),
+		Gpu:  c.ToProto(gpu),
+		Opts: c.ToProtoUpdateOptions(&opts),
 	})
 	if err != nil {
 		return nil, errors.NewAPIError(err, "gpus", gpu.GetName())
 	}
 
-	obj := devicev1alpha1.FromProto(resp)
+	obj := c.fromProto(resp)
 	c.logger.V(2).Info("Updated GPU status",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
@@ -291,7 +316,7 @@ func (c *gpus) Delete(ctx context.Context, name string, opts v1.DeleteOptions) e
 	_, err := c.client.DeleteGpu(ctx, &pb.DeleteGpuRequest{
 		Name:      name,
 		Namespace: c.getNamespace(),
-		Opts:      devicev1alpha1.ToProtoDeleteOptions(opts),
+		Opts:      c.ToProtoDeleteOptions(&opts),
 	})
 	if err != nil {
 		return errors.NewAPIError(err, "gpus", name)
@@ -325,14 +350,14 @@ func (c *gpus) Patch(ctx context.Context, name string, pt types.PatchType, data 
 		Namespace:    c.getNamespace(),
 		PatchType:    string(pt),
 		Data:         data,
-		Opts:         devicev1alpha1.ToProtoPatchOptions(opts),
+		Opts:         c.ToProtoPatchOptions(&opts),
 		Subresources: subresources,
 	})
 	if err != nil {
 		return nil, errors.NewAPIError(err, "gpus", name)
 	}
 
-	obj := devicev1alpha1.FromProto(resp)
+	obj := c.fromProto(resp)
 	c.logger.V(2).Info("Patched GPU",
 		"name", name,
 		"namespace", c.getNamespace(),

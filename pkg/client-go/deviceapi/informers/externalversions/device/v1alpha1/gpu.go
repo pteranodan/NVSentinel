@@ -21,9 +21,9 @@ import (
 	time "time"
 
 	apidevicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	versioned "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
-	internalinterfaces "github.com/nvidia/nvsentinel/pkg/client-go/informers/externalversions/internalinterfaces"
-	devicev1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/listers/device/v1alpha1"
+	deviceapi "github.com/nvidia/nvsentinel/pkg/client-go/deviceapi"
+	internalinterfaces "github.com/nvidia/nvsentinel/pkg/client-go/deviceapi/informers/externalversions/internalinterfaces"
+	devicev1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/deviceapi/listers/device/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -45,14 +45,14 @@ type gPUInformer struct {
 // NewGPUInformer constructs a new informer for GPU type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewGPUInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+func NewGPUInformer(client deviceapi.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return NewFilteredGPUInformer(client, resyncPeriod, indexers, nil)
 }
 
 // NewFilteredGPUInformer constructs a new informer for GPU type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredGPUInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredGPUInformer(client deviceapi.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
@@ -86,7 +86,7 @@ func NewFilteredGPUInformer(client versioned.Interface, resyncPeriod time.Durati
 	)
 }
 
-func (f *gPUInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+func (f *gPUInformer) defaultInformer(client deviceapi.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
 	return NewFilteredGPUInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 

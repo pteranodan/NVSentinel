@@ -161,13 +161,13 @@ var newClientForConfigTemplate = `
 // NewForConfig creates a new $.GroupGoName$$.Version$Client for the given config.
 // NewForConfig is equivalent to NewForConfigAndClient(c, clientConn),
 // where clientConn was generated with nvgrpc.ClientConnFor(c).
-func NewForConfig(ctx $.context|raw$, c *$.Config|raw$) (*$.GroupGoName$$.Version$Client, error) {
+func NewForConfig(c *$.Config|raw$) (*$.GroupGoName$$.Version$Client, error) {
 	if c == nil {
 		return nil, $.fmtErrorf|raw$("config cannot be nil")
 	}
 
 	config := *c // Shallow copy to avoid mutation
-	conn, err := $.ClientConnFor|raw$(ctx, &config)
+	conn, err := $.ClientConnFor|raw$(&config)
 	if err != nil {
 		return nil, err
 	}
@@ -197,8 +197,8 @@ func NewForConfigAndClient(c *$.Config|raw$, conn $.ClientConnInterface|raw$) (*
 var newClientForConfigOrDieTemplate = `
 // NewForConfigOrDie creates a new $.GroupGoName$$.Version$Client for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(ctx $.context|raw$, c *$.Config|raw$) *$.GroupGoName$$.Version$Client {
-	client, err := NewForConfig(ctx, c)
+func NewForConfigOrDie(c *$.Config|raw$) *$.GroupGoName$$.Version$Client {
+	client, err := NewForConfig(c)
 	if err != nil {
 		panic(err)
 	}

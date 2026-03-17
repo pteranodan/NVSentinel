@@ -27,7 +27,7 @@ import (
 	"k8s.io/klog/v2"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
+	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/device/typed/device/v1alpha1"
 	testutil "github.com/nvidia/nvsentinel/pkg/util/test"
 )
 

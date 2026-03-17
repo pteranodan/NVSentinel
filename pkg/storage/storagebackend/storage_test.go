@@ -40,8 +40,8 @@ func TestStorage(t *testing.T) {
 		socketURL := "unix://" + socketFile
 
 		s := &Storage{
-			SocketPath:  socketFile,
-			DatabaseDir: tmpDir,
+			SocketPath: socketFile,
+			StorageDir: tmpDir,
 			KineConfig: endpoint.Config{
 				Listener:         socketURL,
 				Endpoint:         "sqlite://" + dbPath,
@@ -215,7 +215,7 @@ func TestStorage_StaleSocket(t *testing.T) {
 
 	s := &Storage{
 		SocketPath:    socketURL,
-		DatabaseDir:   tmpDir,
+		StorageDir:    tmpDir,
 		StorageConfig: apistorage.Config{Type: "etcd3"},
 	}
 
@@ -242,7 +242,7 @@ func TestStorage_SocketInUse(t *testing.T) {
 
 	s := &Storage{
 		SocketPath:    socketURL,
-		DatabaseDir:   tmpDir,
+		StorageDir:    tmpDir,
 		StorageConfig: apistorage.Config{Type: "etcd3"},
 	}
 

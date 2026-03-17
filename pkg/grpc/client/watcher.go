@@ -129,6 +129,8 @@ func (w *Watcher) receive() {
 			w.result <- watch.Event{Type: watch.Error, Object: obj}
 
 			return
+		case "BOOKMARK":
+			eventType = watch.Bookmark
 		default:
 			w.logger.V(2).Info("Ignored unknown watch event type", "type", typeStr)
 			continue
@@ -166,16 +168,19 @@ func (w *Watcher) sendError(err error) {
 
 	//nolint:exhaustive // Only specific gRPC codes require special Kubernetes status mapping.
 	switch code {
-	case codes.OutOfRange, codes.ResourceExhausted, codes.InvalidArgument:
-		// CRITICAL for Informers: This tells the Reflector to perform a new List operation.
-		statusErr.Reason = metav1.StatusReasonExpired
-		statusErr.Code = 410
+	case codes.InvalidArgument:
+		statusErr.Reason = metav1.StatusReasonBadRequest
+		statusErr.Code = 400
 	case codes.PermissionDenied:
 		statusErr.Reason = metav1.StatusReasonForbidden
 		statusErr.Code = 403
 	case codes.NotFound:
 		statusErr.Reason = metav1.StatusReasonNotFound
 		statusErr.Code = 404
+	case codes.OutOfRange, codes.ResourceExhausted:
+		// CRITICAL for Informers: This tells the Reflector to perform a new List operation.
+		statusErr.Reason = metav1.StatusReasonExpired
+		statusErr.Code = 410
 	default:
 		w.logger.V(5).Info("No specialized status mapping found", "grpcCode", code)
 	}

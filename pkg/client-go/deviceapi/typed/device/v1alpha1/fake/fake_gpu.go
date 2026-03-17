@@ -20,7 +20,7 @@ import (
 	context "context"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	v1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
+	v1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/deviceapi/typed/device/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"

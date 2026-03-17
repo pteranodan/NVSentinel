@@ -42,8 +42,8 @@ func TestServer(t *testing.T) {
 		pprofAddr := test.MustGetFreeTCPAddress(t)
 
 		storage := &storagebackend.Storage{
-			SocketPath:  "unix://" + kineSocket,
-			DatabaseDir: tmpDir,
+			SocketPath: "unix://" + kineSocket,
+			StorageDir: tmpDir,
 			KineConfig: endpoint.Config{
 				Listener:         "unix://" + kineSocket,
 				Endpoint:         "sqlite://" + dbPath,

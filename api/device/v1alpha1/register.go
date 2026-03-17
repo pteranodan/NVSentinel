@@ -21,7 +21,6 @@ import (
 )
 
 var SchemeGroupVersion = schema.GroupVersion{Group: "device.nvidia.com", Version: "v1alpha1"}
-var internalSchemeGroupVersion = schema.GroupVersion{Group: "device.nvidia.com", Version: runtime.APIVersionInternal}
 
 func Resource(resource string) schema.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()
@@ -37,11 +36,6 @@ var (
 
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
-		&GPU{},
-		&GPUList{},
-	)
-
-	scheme.AddKnownTypes(internalSchemeGroupVersion,
 		&GPU{},
 		&GPUList{},
 	)

@@ -26,6 +26,7 @@ import (
 	"github.com/k3s-io/kine/pkg/drivers/generic"
 	"github.com/k3s-io/kine/pkg/endpoint"
 	nvgrpc "github.com/nvidia/nvsentinel/pkg/grpc/options"
+	"github.com/nvidia/nvsentinel/pkg/util/validation"
 	"google.golang.org/grpc"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/server/options"
@@ -38,8 +39,8 @@ const (
 
 	defaultKineSocketPath = "/var/run/nvidia-device-api/kine.sock"
 
-	defaultDatabasePath = "sqlite:///var/lib/nvidia-device-api/state.db"
-	defaultEtcdVersion  = "3.5.13"
+	defaultStorageEndpoint = "sqlite:///var/lib/nvidia-device-api/state.db"
+	defaultEtcdVersion     = "3.5.13"
 )
 
 var storageTypes = sets.NewString(
@@ -49,13 +50,13 @@ var storageTypes = sets.NewString(
 
 // Options define the flags and validation for a storage backend.
 type Options struct {
-	StorageBackend                  string
-	StorageInitializationTimeout    time.Duration
-	StorageReadycheckTimeout        time.Duration
-	DatabasePath                    string
-	DatabaseMaxOpenConns            int
-	DatabaseMaxIdleConns            int
-	DatabaseMaxConnLifetime         time.Duration
+	Type                            string
+	InitializationTimeout           time.Duration
+	ReadycheckTimeout               time.Duration
+	Endpoint                        string
+	MaxOpenConns                    int
+	MaxIdleConns                    int
+	MaxConnLifetime                 time.Duration
 	EtcdVersion                     string
 	EtcdWatchProgressNotifyInterval time.Duration
 	EtcdCompactionInterval          time.Duration
@@ -74,10 +75,10 @@ type Options struct {
 type completedOptions struct {
 	Options
 
-	DatabaseDir string
-	SocketPath  string
-	KineConfig  endpoint.Config
-	Etcd        *options.EtcdOptions
+	StorageDir string
+	SocketPath string
+	KineConfig endpoint.Config
+	Etcd       *options.EtcdOptions
 }
 
 type CompletedOptions struct {
@@ -93,13 +94,13 @@ func NewOptions() *Options {
 	}
 
 	return &Options{
-		StorageBackend:                  apistorage.StorageTypeETCD3,
-		StorageInitializationTimeout:    1 * time.Minute,
-		StorageReadycheckTimeout:        2 * time.Second,
-		DatabasePath:                    defaultDatabasePath,
-		DatabaseMaxOpenConns:            2,
-		DatabaseMaxIdleConns:            2, // from database/sql
-		DatabaseMaxConnLifetime:         3 * time.Minute,
+		Type:                            apistorage.StorageTypeETCD3,
+		InitializationTimeout:           1 * time.Minute,
+		ReadycheckTimeout:               2 * time.Second,
+		Endpoint:                        defaultStorageEndpoint,
+		MaxOpenConns:                    2,
+		MaxIdleConns:                    2, // from database/sql
+		MaxConnLifetime:                 3 * time.Minute,
 		GRPC:                            nvgrpc.NewOptions(),
 		EtcdVersion:                     defaultEtcdVersion,
 		EtcdWatchProgressNotifyInterval: 5 * time.Minute,
@@ -120,20 +121,20 @@ func (o *Options) AddFlags(fss *cliflag.NamedFlagSets) {
 
 	storageFs := fss.FlagSet("storage")
 
-	storageFs.StringVar(&o.StorageBackend, "storage-backend", o.StorageBackend,
-		fmt.Sprintf("The storage backend for persistence. Options: %s (default), %s", apistorage.StorageTypeETCD3, StorageTypeMemory))
-	storageFs.DurationVar(&o.StorageInitializationTimeout, "storage-initialization-timeout", o.StorageInitializationTimeout,
+	storageFs.StringVar(&o.Type, "storage-type", o.Type,
+		fmt.Sprintf("The storage type for persistence. Options: %s (default), %s", apistorage.StorageTypeETCD3, StorageTypeMemory))
+	storageFs.DurationVar(&o.InitializationTimeout, "storage-initialization-timeout", o.InitializationTimeout,
 		"The maximum amount of time to wait for storage initialization before declaring the server ready.")
-	storageFs.DurationVar(&o.StorageReadycheckTimeout, "storage-readycheck-timeout", o.StorageReadycheckTimeout,
+	storageFs.DurationVar(&o.ReadycheckTimeout, "storage-readycheck-timeout", o.ReadycheckTimeout,
 		"The timeout to use when checking storage readiness.")
 
-	storageFs.StringVar(&o.DatabasePath, "database-path", o.DatabasePath, "The path to the SQLite database file.")
-	storageFs.IntVar(&o.DatabaseMaxOpenConns, "database-max-open-connections", o.DatabaseMaxOpenConns,
-		"The maximum number of open connections to the backend database. Set to <= 0 for unlimited. If set, must be at least 2.")
-	storageFs.IntVar(&o.DatabaseMaxIdleConns, "database-max-idle-connections", o.DatabaseMaxIdleConns,
-		"The maximum number of idle connections to the backend database. Set to 0 to disable connection pooling.")
-	storageFs.DurationVar(&o.DatabaseMaxConnLifetime, "database-connection-max-lifetime", o.DatabaseMaxConnLifetime,
-		"The maximum amount of time a database connection may be reused. Set to 0s for unlimited. If enabled, must be at least 1s.")
+	storageFs.StringVar(&o.Endpoint, "storage-endpoint", o.Endpoint, "The connection string or path to the SQLite storage backend (e.g., sqlite:///path/to/db.sqlite).")
+	storageFs.IntVar(&o.MaxOpenConns, "storage-max-open-connections", o.MaxOpenConns,
+		"The maximum number of open connections to the storage backend. Set to <= 0 for unlimited. If set, must be at least 2.")
+	storageFs.IntVar(&o.MaxIdleConns, "storage-max-idle-connections", o.MaxIdleConns,
+		"The maximum number of idle connections to the storage backend. Set to 0 to disable connection pooling.")
+	storageFs.DurationVar(&o.MaxConnLifetime, "storage-connection-max-lifetime", o.MaxConnLifetime,
+		"The maximum amount of time a storage connection may be reused. Set to 0s for unlimited. If enabled, must be at least 1s.")
 
 	storageFs.StringVar(&o.EtcdVersion, "etcd-version", o.EtcdVersion, "The emulated etcd version.")
 	storageFs.DurationVar(&o.EtcdWatchProgressNotifyInterval, "etcd-watch-progress-notify-interval", o.EtcdWatchProgressNotifyInterval,
@@ -162,23 +163,23 @@ func (o *Options) Complete() (CompletedOptions, error) {
 	}
 
 	etcd := options.NewEtcdOptions(apistorage.NewDefaultConfig("/registry", nil))
-	etcd.StorageConfig.HealthcheckTimeout = o.StorageInitializationTimeout
-	etcd.StorageConfig.ReadycheckTimeout = o.StorageReadycheckTimeout
+	etcd.StorageConfig.HealthcheckTimeout = o.InitializationTimeout
+	etcd.StorageConfig.ReadycheckTimeout = o.ReadycheckTimeout
 
-	if o.StorageBackend == StorageTypeMemory {
+	if o.Type == StorageTypeMemory {
 		etcd.StorageConfig.Type = StorageTypeMemory
 		completed.Etcd = etcd
 
 		completed.KineConfig = endpoint.Config{}
-		completed.DatabaseDir = ""
+		completed.StorageDir = ""
 
 		return CompletedOptions{completedOptions: &completed}, nil
 	}
 
 	etcd.StorageConfig.Type = apistorage.StorageTypeETCD3
 
-	databaseEndpoint := o.DatabasePath
-	if databaseEndpoint == "" || databaseEndpoint == defaultDatabasePath {
+	storageEndpoint := o.Endpoint
+	if storageEndpoint == "" || storageEndpoint == defaultStorageEndpoint {
 		v := url.Values{}
 		v.Set("_busy_timeout", "5000")
 		v.Set("_cache_size", "-65536") // 64MiB
@@ -189,18 +190,18 @@ func (o *Options) Complete() (CompletedOptions, error) {
 		v.Set("_synchronous", "NORMAL")
 		v.Set("_temp_store", "MEMORY")
 		v.Set("_txlock", "immediate")
-		databaseEndpoint = fmt.Sprintf("%s?%s", defaultDatabasePath, v.Encode())
+		storageEndpoint = fmt.Sprintf("%s?%s", defaultStorageEndpoint, v.Encode())
 	}
 
-	path := databaseEndpoint
+	path := storageEndpoint
 	if strings.Contains(path, "://") {
-		if u, err := url.Parse(databaseEndpoint); err == nil && u.Path != "" {
+		if u, err := url.Parse(storageEndpoint); err == nil && u.Path != "" {
 			path = u.Path
 		}
 	}
-	completed.DatabaseDir = filepath.Dir(path)
+	completed.StorageDir = filepath.Dir(path)
 
-	maxIdle := o.DatabaseMaxIdleConns
+	maxIdle := o.MaxIdleConns
 	if maxIdle == 0 {
 		// In database/sql, MaxIdleConns 0 defaults to 2; set to negative to disable connection pooling.
 		maxIdle = -1
@@ -211,11 +212,11 @@ func (o *Options) Complete() (CompletedOptions, error) {
 
 	kineConfig := endpoint.Config{
 		Listener: kineListener,
-		Endpoint: databaseEndpoint,
+		Endpoint: storageEndpoint,
 		ConnectionPoolConfig: generic.ConnectionPoolConfig{
 			MaxIdle:     maxIdle,
-			MaxOpen:     o.DatabaseMaxOpenConns,
-			MaxLifetime: o.DatabaseMaxConnLifetime,
+			MaxOpen:     o.MaxOpenConns,
+			MaxLifetime: o.MaxConnLifetime,
 		},
 		NotifyInterval:        o.EtcdWatchProgressNotifyInterval,
 		EmulatedETCDVersion:   o.EtcdVersion,
@@ -254,53 +255,48 @@ func (o *Options) Validate() []error {
 
 	allErrors := []error{}
 
-	if !storageTypes.Has(o.StorageBackend) {
-		allErrors = append(allErrors, fmt.Errorf("--storage-type %v: invalid, allowed values: %s.", o.StorageBackend, strings.Join(storageTypes.List(), ", ")))
+	if !storageTypes.Has(o.Type) {
+		allErrors = append(allErrors, fmt.Errorf("--storage-type %v: invalid, allowed values: %s.", o.Type, strings.Join(storageTypes.List(), ", ")))
 	}
 
-	if o.StorageInitializationTimeout < 1*time.Second {
-		allErrors = append(allErrors, fmt.Errorf("--storage-initialization-timeout %v: must be at least 1s", o.StorageInitializationTimeout))
+	if o.InitializationTimeout < 1*time.Second {
+		allErrors = append(allErrors, fmt.Errorf("--storage-initialization-timeout %v: must be at least 1s", o.InitializationTimeout))
 	}
 
-	if o.StorageReadycheckTimeout < 1*time.Second {
-		allErrors = append(allErrors, fmt.Errorf("--storage-readycheck-timeout %v: must be at least 1s", o.StorageReadycheckTimeout))
+	if o.ReadycheckTimeout < 1*time.Second {
+		allErrors = append(allErrors, fmt.Errorf("--storage-readycheck-timeout %v: must be at least 1s", o.ReadycheckTimeout))
 	}
 
-	if o.StorageReadycheckTimeout > o.StorageInitializationTimeout {
-		allErrors = append(allErrors, fmt.Errorf("--storage-readycheck-timeout: %v must be less than or equal to --storage-initialization-timeout %v", o.StorageReadycheckTimeout, o.StorageInitializationTimeout))
+	if o.ReadycheckTimeout > o.InitializationTimeout {
+		allErrors = append(allErrors, fmt.Errorf("--storage-readycheck-timeout: %v must be less than or equal to --storage-initialization-timeout %v", o.ReadycheckTimeout, o.InitializationTimeout))
 	}
 
-	// Exit early for StorageTypeMemory (database options don't apply)
-	if o.StorageBackend == StorageTypeMemory {
+	// Exit early for StorageTypeMemory (storage options don't apply)
+	if o.Type == StorageTypeMemory {
 		return allErrors
 	}
 
-	if o.DatabasePath == "" {
-		allErrors = append(allErrors, fmt.Errorf("--database-path: required"))
+	if o.Endpoint == "" {
+		allErrors = append(allErrors, fmt.Errorf("--storage-endpoint: required"))
 	} else {
-		path := o.DatabasePath
-		if strings.Contains(path, "://") {
-			if u, err := url.Parse(path); err == nil && u.Path != "" {
-				path = u.Path
+		if validationErrors := validation.IsSQLiteDSN(o.Endpoint); len(validationErrors) > 0 {
+			for _, errDesc := range validationErrors {
+				allErrors = append(allErrors, fmt.Errorf("--storage-endpoint %q: %s", o.Endpoint, errDesc))
 			}
-		}
-
-		if !filepath.IsAbs(path) {
-			allErrors = append(allErrors, fmt.Errorf("--database-path %q: file path component must be an absolute path", o.DatabasePath))
 		}
 	}
 
 	// Kine+SQLite requires at least 2 connections.
-	if o.DatabaseMaxOpenConns == 1 {
-		allErrors = append(allErrors, fmt.Errorf("--database-max-open-connections %d: must be less than or equal to 0 (unlimited) or greater than 2", o.DatabaseMaxOpenConns))
+	if o.MaxOpenConns == 1 {
+		allErrors = append(allErrors, fmt.Errorf("--storage-max-open-connections %d: must be less than or equal to 0 (unlimited) or greater than 2", o.MaxOpenConns))
 	}
 
-	if o.DatabaseMaxOpenConns > 0 && o.DatabaseMaxIdleConns > o.DatabaseMaxOpenConns {
-		allErrors = append(allErrors, fmt.Errorf("--database-max-idle-connections %d: must be less than or equal to --database-max-open-connections %d", o.DatabaseMaxIdleConns, o.DatabaseMaxOpenConns))
+	if o.MaxOpenConns > 0 && o.MaxIdleConns > o.MaxOpenConns {
+		allErrors = append(allErrors, fmt.Errorf("--storage-max-idle-connections %d: must be less than or equal to --storage-max-open-connections %d", o.MaxIdleConns, o.MaxOpenConns))
 	}
 
-	if o.DatabaseMaxConnLifetime < 0 {
-		allErrors = append(allErrors, fmt.Errorf("--database-connection-max-lifetime %d: must be 0 (unlimited) or a positive duration", o.DatabaseMaxConnLifetime))
+	if o.MaxConnLifetime < 0 {
+		allErrors = append(allErrors, fmt.Errorf("--storage-connection-max-lifetime %d: must be 0 (unlimited) or a positive duration", o.MaxConnLifetime))
 	}
 
 	if o.EtcdWatchProgressNotifyInterval < 5*time.Second || o.EtcdWatchProgressNotifyInterval > 10*time.Minute {

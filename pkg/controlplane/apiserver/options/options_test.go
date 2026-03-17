@@ -116,8 +116,8 @@ func TestComplete(t *testing.T) {
 			t.Errorf("expected gRPC server options, got none")
 		}
 
-		if completed.Storage.StorageBackend != apistorage.StorageTypeETCD3 {
-			t.Errorf("expected storage type to be %s, got %s", apistorage.StorageTypeETCD3, completed.Storage.StorageBackend)
+		if completed.Storage.Type != apistorage.StorageTypeETCD3 {
+			t.Errorf("expected storage type to be %s, got %s", apistorage.StorageTypeETCD3, completed.Storage.Type)
 		}
 	})
 
@@ -296,7 +296,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:        "Invalid storage option",
-			modify:      func(o *options.Options) { o.Storage.StorageBackend = apistorage.StorageTypeETCD2 },
+			modify:      func(o *options.Options) { o.Storage.Type = apistorage.StorageTypeETCD2 },
 			wantErr:     true,
 			errContains: "--storage-type",
 		},

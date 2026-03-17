@@ -17,7 +17,7 @@
 package fake
 
 import (
-	v1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
+	v1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/deviceapi/typed/device/v1alpha1"
 	grpc "google.golang.org/grpc"
 	testing "k8s.io/client-go/testing"
 )

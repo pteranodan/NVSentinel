@@ -27,7 +27,7 @@ log "INFO:" "Cleaning generated artifacts..."
 
 rm -rf bin/
 rm -rf internal/generated/proto/
-rm -rf pkg/client-go/client/ pkg/client-go/informers/ pkg/client-go/listers/
+rm -rf pkg/client-go/clientset/ pkg/client-go/informers/ pkg/client-go/listers/
 find api/ -name "zz_generated.deepcopy.go" -delete
 find api/ -name "zz_generated.goverter.go" -delete
 rm -f cover.out

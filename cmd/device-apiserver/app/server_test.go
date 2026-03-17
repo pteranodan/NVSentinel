@@ -43,9 +43,9 @@ func setupTestOptions(t *testing.T, tmpDir string, kineSocketPathOverride string
 	opts.HealthAddress = test.MustGetFreeTCPAddress(t)
 	opts.ShutdownGracePeriod = 1 * time.Second
 
-	opts.Storage.DatabasePath = "sqlite://" + dbPath
-	opts.Storage.StorageInitializationTimeout = 5 * time.Second
-	opts.Storage.StorageReadycheckTimeout = 2 * time.Second
+	opts.Storage.Endpoint = "sqlite://" + dbPath
+	opts.Storage.InitializationTimeout = 5 * time.Second
+	opts.Storage.ReadycheckTimeout = 2 * time.Second
 
 	return opts
 }
@@ -153,9 +153,9 @@ func TestRun_StorageInitializationFailure(t *testing.T) {
 		}
 
 		opts := setupTestOptions(t, tmpDir, "")
-		opts.Storage.DatabasePath = "sqlite://" + filepath.Join(blockedPath, "state.db")
-		opts.Storage.StorageInitializationTimeout = 1 * time.Second
-		opts.Storage.StorageReadycheckTimeout = 1 * time.Second
+		opts.Storage.Endpoint = "sqlite://" + filepath.Join(blockedPath, "state.db")
+		opts.Storage.InitializationTimeout = 1 * time.Second
+		opts.Storage.ReadycheckTimeout = 1 * time.Second
 
 		completedOpts, err := opts.Complete()
 		if err != nil {

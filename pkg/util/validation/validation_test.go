@@ -15,6 +15,7 @@
 package validation
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -64,6 +65,46 @@ func TestIsUnixSocketURI(t *testing.T) {
 			errs := IsUnixSocketURI(tt.uri)
 			if (len(errs) > 0) != tt.wantErr {
 				t.Errorf("IsUnixSocketURI(%s) errors = %v, wantErr %v", tt.uri, errs, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestIsSQLiteDSN(t *testing.T) {
+	tests := []struct {
+		name        string
+		dsn         string
+		wantErr     bool
+		errContains string
+	}{
+		{"Valid absolute path", "sqlite:///path/to/db.sqlite", false, ""},
+		{"Valid with query params", "sqlite:///path/to/db.sqlite?cache=shared", false, ""},
+		{"Missing scheme", "/path/to/db.sqlite", true, "must start with"},
+		{"Contains host (2 slashes)", "sqlite://host/path/to/db.sqlite", true, "host \"host\" must be empty"},
+		{"Relative path", "sqlite://path/to/db.sqlite", true, "host \"path\" must be empty"},
+		{"Opaque relative path", "sqlite:path/to/db.sqlite", true, "must start with \"sqlite://\""},
+		{"Empty path", "sqlite://", true, "path is missing"},
+		{"Wrong scheme", "http:///path/to/db.sqlite", true, "must start with"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := IsSQLiteDSN(tt.dsn)
+			if (len(errs) > 0) != tt.wantErr {
+				t.Errorf("IsSQLiteDSN(%q) errors = %v, wantErr %v", tt.dsn, errs, tt.wantErr)
+			}
+
+			if tt.wantErr && len(errs) > 0 && tt.errContains != "" {
+				match := false
+				for _, e := range errs {
+					if strings.Contains(e, tt.errContains) {
+						match = true
+						break
+					}
+				}
+				if !match {
+					t.Errorf("IsSQLiteDSN(%q) errors %v do not contain %q", tt.dsn, errs, tt.errContains)
+				}
 			}
 		})
 	}

@@ -11,76 +11,103 @@ import (
 
 type ConverterImpl struct{}
 
-func (c *ConverterImpl) FromProtobuf(source *v1alpha1.Gpu) GPU {
-	var v1alpha1GPU GPU
+func (c *ConverterImpl) FromProto(source *v1alpha1.Gpu) *GPU {
+	var pV1alpha1GPU *GPU
 	if source != nil {
-		v1alpha1GPU.TypeMeta = FromProtobufTypeMeta(source)
-		v1alpha1GPU.ObjectMeta = c.FromProtobufObjectMeta((*source).Metadata)
-		v1alpha1GPU.Spec = c.FromProtobufSpec((*source).Spec)
-		v1alpha1GPU.Status = c.FromProtobufStatus((*source).Status)
+		var v1alpha1GPU GPU
+		v1alpha1GPU.TypeMeta = FromProtoTypeMeta(source)
+		v1alpha1GPU.ObjectMeta = c.FromProtoObjectMeta((*source).ObjectMeta)
+		v1alpha1GPU.Spec = c.FromProtoSpec((*source).Spec)
+		v1alpha1GPU.Status = c.FromProtoStatus((*source).Status)
+		pV1alpha1GPU = &v1alpha1GPU
 	}
-	return v1alpha1GPU
+	return pV1alpha1GPU
 }
-func (c *ConverterImpl) FromProtobufCondition(source *v1alpha1.Condition) v1.Condition {
+func (c *ConverterImpl) FromProtoCondition(source *v1alpha1.Condition) v1.Condition {
 	var v1Condition v1.Condition
 	if source != nil {
 		v1Condition.Type = (*source).Type
 		v1Condition.Status = v1.ConditionStatus((*source).Status)
-		v1Condition.LastTransitionTime = FromProtobufTimestamp((*source).LastTransitionTime)
+		if (*source).ObservedGeneration != nil {
+			v1Condition.ObservedGeneration = *(*source).ObservedGeneration
+		}
+		v1Condition.LastTransitionTime = FromProtoTimestamp((*source).LastTransitionTime)
 		v1Condition.Reason = (*source).Reason
 		v1Condition.Message = (*source).Message
 	}
 	return v1Condition
 }
-func (c *ConverterImpl) FromProtobufList(source *v1alpha1.GpuList) *GPUList {
+func (c *ConverterImpl) FromProtoItems(source []*v1alpha1.Gpu) []GPU {
+	return FromProtoItems(c, source)
+}
+func (c *ConverterImpl) FromProtoList(source *v1alpha1.GpuList) *GPUList {
 	var pV1alpha1GPUList *GPUList
 	if source != nil {
 		var v1alpha1GPUList GPUList
-		v1alpha1GPUList.TypeMeta = FromProtobufListTypeMeta(source)
-		v1alpha1GPUList.ListMeta = c.FromProtobufListMeta((*source).Metadata)
-		if (*source).Items != nil {
-			v1alpha1GPUList.Items = make([]GPU, len((*source).Items))
-			for i := 0; i < len((*source).Items); i++ {
-				v1alpha1GPUList.Items[i] = c.FromProtobuf((*source).Items[i])
-			}
-		}
+		v1alpha1GPUList.TypeMeta = FromProtoListTypeMeta(source)
+		v1alpha1GPUList.ListMeta = c.FromProtoListMeta((*source).ListMeta)
+		v1alpha1GPUList.Items = FromProtoItems(c, (*source).Items)
 		pV1alpha1GPUList = &v1alpha1GPUList
 	}
 	return pV1alpha1GPUList
 }
-func (c *ConverterImpl) FromProtobufListMeta(source *v1alpha1.ListMeta) v1.ListMeta {
+func (c *ConverterImpl) FromProtoListMeta(source *v1alpha1.ListMeta) v1.ListMeta {
 	var v1ListMeta v1.ListMeta
 	if source != nil {
-		v1ListMeta.ResourceVersion = (*source).ResourceVersion
+		if (*source).ResourceVersion != nil {
+			v1ListMeta.ResourceVersion = *(*source).ResourceVersion
+		}
 	}
 	return v1ListMeta
 }
-func (c *ConverterImpl) FromProtobufObjectMeta(source *v1alpha1.ObjectMeta) v1.ObjectMeta {
+func (c *ConverterImpl) FromProtoObjectMeta(source *v1alpha1.ObjectMeta) v1.ObjectMeta {
 	var v1ObjectMeta v1.ObjectMeta
 	if source != nil {
-		v1ObjectMeta.Name = (*source).Name
-		v1ObjectMeta.Namespace = (*source).Namespace
-		v1ObjectMeta.UID = types.UID((*source).Uid)
-		v1ObjectMeta.ResourceVersion = (*source).ResourceVersion
-		v1ObjectMeta.Generation = (*source).Generation
-		v1ObjectMeta.CreationTimestamp = FromProtobufTimestamp((*source).CreationTimestamp)
+		if (*source).Name != nil {
+			v1ObjectMeta.Name = *(*source).Name
+		}
+		if (*source).Namespace != nil {
+			v1ObjectMeta.Namespace = *(*source).Namespace
+		}
+		if (*source).Uid != nil {
+			v1ObjectMeta.UID = types.UID(*(*source).Uid)
+		}
+		if (*source).ResourceVersion != nil {
+			v1ObjectMeta.ResourceVersion = *(*source).ResourceVersion
+		}
+		if (*source).Generation != nil {
+			v1ObjectMeta.Generation = *(*source).Generation
+		}
+		v1ObjectMeta.CreationTimestamp = FromProtoTimestamp((*source).CreationTimestamp)
+		if (*source).Labels != nil {
+			v1ObjectMeta.Labels = make(map[string]string, len((*source).Labels))
+			for key, value := range (*source).Labels {
+				v1ObjectMeta.Labels[key] = value
+			}
+		}
+		if (*source).Annotations != nil {
+			v1ObjectMeta.Annotations = make(map[string]string, len((*source).Annotations))
+			for key2, value2 := range (*source).Annotations {
+				v1ObjectMeta.Annotations[key2] = value2
+			}
+		}
 	}
 	return v1ObjectMeta
 }
-func (c *ConverterImpl) FromProtobufSpec(source *v1alpha1.GpuSpec) GPUSpec {
+func (c *ConverterImpl) FromProtoSpec(source *v1alpha1.GpuSpec) GPUSpec {
 	var v1alpha1GPUSpec GPUSpec
 	if source != nil {
 		v1alpha1GPUSpec.UUID = (*source).Uuid
 	}
 	return v1alpha1GPUSpec
 }
-func (c *ConverterImpl) FromProtobufStatus(source *v1alpha1.GpuStatus) GPUStatus {
+func (c *ConverterImpl) FromProtoStatus(source *v1alpha1.GpuStatus) GPUStatus {
 	var v1alpha1GPUStatus GPUStatus
 	if source != nil {
 		if (*source).Conditions != nil {
 			v1alpha1GPUStatus.Conditions = make([]v1.Condition, len((*source).Conditions))
 			for i := 0; i < len((*source).Conditions); i++ {
-				v1alpha1GPUStatus.Conditions[i] = c.FromProtobufCondition((*source).Conditions[i])
+				v1alpha1GPUStatus.Conditions[i] = c.FromProtoCondition((*source).Conditions[i])
 			}
 		}
 		if (*source).RecommendedAction != nil {
@@ -89,88 +116,136 @@ func (c *ConverterImpl) FromProtobufStatus(source *v1alpha1.GpuStatus) GPUStatus
 	}
 	return v1alpha1GPUStatus
 }
-func (c *ConverterImpl) ToProtobuf(source GPU) *v1alpha1.Gpu {
-	var v1alpha1Gpu v1alpha1.Gpu
-	v1alpha1Gpu.Metadata = c.ToProtobufObjectMeta(source.ObjectMeta)
-	v1alpha1Gpu.Spec = c.ToProtobufSpec(source.Spec)
-	v1alpha1Gpu.Status = c.ToProtobufStatus(source.Status)
-	return &v1alpha1Gpu
+func (c *ConverterImpl) ToProto(source *GPU) *v1alpha1.Gpu {
+	var pV1alpha1Gpu *v1alpha1.Gpu
+	if source != nil {
+		var v1alpha1Gpu v1alpha1.Gpu
+		v1alpha1Gpu.TypeMeta = ToProtoTypeMeta((*source).TypeMeta)
+		v1alpha1Gpu.ObjectMeta = c.ToProtoObjectMeta((*source).ObjectMeta)
+		v1alpha1Gpu.Spec = c.ToProtoSpec((*source).Spec)
+		v1alpha1Gpu.Status = c.ToProtoStatus((*source).Status)
+		pV1alpha1Gpu = &v1alpha1Gpu
+	}
+	return pV1alpha1Gpu
 }
-func (c *ConverterImpl) ToProtobufCondition(source v1.Condition) *v1alpha1.Condition {
+func (c *ConverterImpl) ToProtoCondition(source v1.Condition) *v1alpha1.Condition {
 	var v1alpha1Condition v1alpha1.Condition
 	v1alpha1Condition.Type = source.Type
 	v1alpha1Condition.Status = string(source.Status)
 	pInt64 := source.ObservedGeneration
 	v1alpha1Condition.ObservedGeneration = &pInt64
-	v1alpha1Condition.LastTransitionTime = ToProtobufTimestamp(source.LastTransitionTime)
+	v1alpha1Condition.LastTransitionTime = ToProtoTimestamp(source.LastTransitionTime)
 	v1alpha1Condition.Reason = source.Reason
 	v1alpha1Condition.Message = source.Message
 	return &v1alpha1Condition
 }
-func (c *ConverterImpl) ToProtobufDeleteOptions(source v1.DeleteOptions) *v1alpha1.DeleteOptions {
-	var v1alpha1DeleteOptions v1alpha1.DeleteOptions
-	v1alpha1DeleteOptions.Preconditions = c.ToProtobufPreconditions(source.Preconditions)
-	return &v1alpha1DeleteOptions
+func (c *ConverterImpl) ToProtoDeleteOptions(source *v1.DeleteOptions) *v1alpha1.DeleteOptions {
+	var pV1alpha1DeleteOptions *v1alpha1.DeleteOptions
+	if source != nil {
+		var v1alpha1DeleteOptions v1alpha1.DeleteOptions
+		v1alpha1DeleteOptions.Preconditions = c.ToProtoPreconditions((*source).Preconditions)
+		pV1alpha1DeleteOptions = &v1alpha1DeleteOptions
+	}
+	return pV1alpha1DeleteOptions
 }
-func (c *ConverterImpl) ToProtobufGetOptions(source v1.GetOptions) *v1alpha1.GetOptions {
-	var v1alpha1GetOptions v1alpha1.GetOptions
-	pString := source.ResourceVersion
-	v1alpha1GetOptions.ResourceVersion = &pString
-	return &v1alpha1GetOptions
+func (c *ConverterImpl) ToProtoGetOptions(source *v1.GetOptions) *v1alpha1.GetOptions {
+	var pV1alpha1GetOptions *v1alpha1.GetOptions
+	if source != nil {
+		var v1alpha1GetOptions v1alpha1.GetOptions
+		pString := (*source).ResourceVersion
+		v1alpha1GetOptions.ResourceVersion = &pString
+		pV1alpha1GetOptions = &v1alpha1GetOptions
+	}
+	return pV1alpha1GetOptions
 }
-func (c *ConverterImpl) ToProtobufList(source *GPUList) *v1alpha1.GpuList {
+func (c *ConverterImpl) ToProtoItems(source []GPU) []*v1alpha1.Gpu {
+	return ToProtoItems(c, source)
+}
+func (c *ConverterImpl) ToProtoList(source *GPUList) *v1alpha1.GpuList {
 	var pV1alpha1GpuList *v1alpha1.GpuList
 	if source != nil {
 		var v1alpha1GpuList v1alpha1.GpuList
-		v1alpha1GpuList.Metadata = c.ToProtobufListMeta((*source).ListMeta)
-		if (*source).Items != nil {
-			v1alpha1GpuList.Items = make([]*v1alpha1.Gpu, len((*source).Items))
-			for i := 0; i < len((*source).Items); i++ {
-				v1alpha1GpuList.Items[i] = c.ToProtobuf((*source).Items[i])
-			}
-		}
+		v1alpha1GpuList.TypeMeta = ToProtoListTypeMeta((*source).TypeMeta)
+		v1alpha1GpuList.ListMeta = c.ToProtoListMeta((*source).ListMeta)
+		v1alpha1GpuList.Items = ToProtoItems(c, (*source).Items)
 		pV1alpha1GpuList = &v1alpha1GpuList
 	}
 	return pV1alpha1GpuList
 }
-func (c *ConverterImpl) ToProtobufListMeta(source v1.ListMeta) *v1alpha1.ListMeta {
+func (c *ConverterImpl) ToProtoListMeta(source v1.ListMeta) *v1alpha1.ListMeta {
 	var v1alpha1ListMeta v1alpha1.ListMeta
-	v1alpha1ListMeta.ResourceVersion = source.ResourceVersion
+	pString := source.ResourceVersion
+	v1alpha1ListMeta.ResourceVersion = &pString
 	return &v1alpha1ListMeta
 }
-func (c *ConverterImpl) ToProtobufListOptions(source v1.ListOptions) *v1alpha1.ListOptions {
-	var v1alpha1ListOptions v1alpha1.ListOptions
-	pString := source.ResourceVersion
-	v1alpha1ListOptions.ResourceVersion = &pString
-	pString2 := c.v1ResourceVersionMatchToString(source.ResourceVersionMatch)
-	v1alpha1ListOptions.ResourceVersionMatch = &pString2
-	if source.TimeoutSeconds != nil {
-		xint64 := *source.TimeoutSeconds
-		v1alpha1ListOptions.TimeoutSeconds = &xint64
+func (c *ConverterImpl) ToProtoListOptions(source *v1.ListOptions) *v1alpha1.ListOptions {
+	var pV1alpha1ListOptions *v1alpha1.ListOptions
+	if source != nil {
+		var v1alpha1ListOptions v1alpha1.ListOptions
+		pString := (*source).LabelSelector
+		v1alpha1ListOptions.LabelSelector = &pString
+		pBool := (*source).Watch
+		v1alpha1ListOptions.Watch = &pBool
+		pBool2 := (*source).AllowWatchBookmarks
+		v1alpha1ListOptions.AllowWatchBookmarks = &pBool2
+		if (*source).SendInitialEvents != nil {
+			xbool := *(*source).SendInitialEvents
+			v1alpha1ListOptions.SendInitialEvents = &xbool
+		}
+		pString2 := (*source).ResourceVersion
+		v1alpha1ListOptions.ResourceVersion = &pString2
+		pString3 := c.v1ResourceVersionMatchToString((*source).ResourceVersionMatch)
+		v1alpha1ListOptions.ResourceVersionMatch = &pString3
+		if (*source).TimeoutSeconds != nil {
+			xint64 := *(*source).TimeoutSeconds
+			v1alpha1ListOptions.TimeoutSeconds = &xint64
+		}
+		pV1alpha1ListOptions = &v1alpha1ListOptions
 	}
-	return &v1alpha1ListOptions
+	return pV1alpha1ListOptions
 }
-func (c *ConverterImpl) ToProtobufObjectMeta(source v1.ObjectMeta) *v1alpha1.ObjectMeta {
+func (c *ConverterImpl) ToProtoObjectMeta(source v1.ObjectMeta) *v1alpha1.ObjectMeta {
 	var v1alpha1ObjectMeta v1alpha1.ObjectMeta
-	v1alpha1ObjectMeta.Name = source.Name
-	v1alpha1ObjectMeta.ResourceVersion = source.ResourceVersion
-	v1alpha1ObjectMeta.Namespace = source.Namespace
-	v1alpha1ObjectMeta.Uid = string(source.UID)
-	v1alpha1ObjectMeta.Generation = source.Generation
-	v1alpha1ObjectMeta.CreationTimestamp = ToProtobufTimestamp(source.CreationTimestamp)
+	pString := source.Name
+	v1alpha1ObjectMeta.Name = &pString
+	pString2 := source.ResourceVersion
+	v1alpha1ObjectMeta.ResourceVersion = &pString2
+	pString3 := source.Namespace
+	v1alpha1ObjectMeta.Namespace = &pString3
+	pString4 := c.typesUIDToString(source.UID)
+	v1alpha1ObjectMeta.Uid = &pString4
+	pInt64 := source.Generation
+	v1alpha1ObjectMeta.Generation = &pInt64
+	v1alpha1ObjectMeta.CreationTimestamp = ToProtoTimestamp(source.CreationTimestamp)
+	if source.Labels != nil {
+		v1alpha1ObjectMeta.Labels = make(map[string]string, len(source.Labels))
+		for key, value := range source.Labels {
+			v1alpha1ObjectMeta.Labels[key] = value
+		}
+	}
+	if source.Annotations != nil {
+		v1alpha1ObjectMeta.Annotations = make(map[string]string, len(source.Annotations))
+		for key2, value2 := range source.Annotations {
+			v1alpha1ObjectMeta.Annotations[key2] = value2
+		}
+	}
 	return &v1alpha1ObjectMeta
 }
-func (c *ConverterImpl) ToProtobufPatchOptions(source v1.PatchOptions) *v1alpha1.PatchOptions {
-	var v1alpha1PatchOptions v1alpha1.PatchOptions
-	_ = source
-	return &v1alpha1PatchOptions
+func (c *ConverterImpl) ToProtoPatchOptions(source *v1.PatchOptions) *v1alpha1.PatchOptions {
+	var pV1alpha1PatchOptions *v1alpha1.PatchOptions
+	if source != nil {
+		var v1alpha1PatchOptions v1alpha1.PatchOptions
+		_ = (*source)
+		pV1alpha1PatchOptions = &v1alpha1PatchOptions
+	}
+	return pV1alpha1PatchOptions
 }
-func (c *ConverterImpl) ToProtobufPreconditions(source *v1.Preconditions) *v1alpha1.Preconditions {
+func (c *ConverterImpl) ToProtoPreconditions(source *v1.Preconditions) *v1alpha1.Preconditions {
 	var pV1alpha1Preconditions *v1alpha1.Preconditions
 	if source != nil {
 		var v1alpha1Preconditions v1alpha1.Preconditions
 		if (*source).UID != nil {
-			xstring := string(*(*source).UID)
+			xstring := c.typesUIDToString(*(*source).UID)
 			v1alpha1Preconditions.Uid = &xstring
 		}
 		if (*source).ResourceVersion != nil {
@@ -181,27 +256,34 @@ func (c *ConverterImpl) ToProtobufPreconditions(source *v1.Preconditions) *v1alp
 	}
 	return pV1alpha1Preconditions
 }
-func (c *ConverterImpl) ToProtobufSpec(source GPUSpec) *v1alpha1.GpuSpec {
+func (c *ConverterImpl) ToProtoSpec(source GPUSpec) *v1alpha1.GpuSpec {
 	var v1alpha1GpuSpec v1alpha1.GpuSpec
 	v1alpha1GpuSpec.Uuid = source.UUID
 	return &v1alpha1GpuSpec
 }
-func (c *ConverterImpl) ToProtobufStatus(source GPUStatus) *v1alpha1.GpuStatus {
+func (c *ConverterImpl) ToProtoStatus(source GPUStatus) *v1alpha1.GpuStatus {
 	var v1alpha1GpuStatus v1alpha1.GpuStatus
 	if source.Conditions != nil {
 		v1alpha1GpuStatus.Conditions = make([]*v1alpha1.Condition, len(source.Conditions))
 		for i := 0; i < len(source.Conditions); i++ {
-			v1alpha1GpuStatus.Conditions[i] = c.ToProtobufCondition(source.Conditions[i])
+			v1alpha1GpuStatus.Conditions[i] = c.ToProtoCondition(source.Conditions[i])
 		}
 	}
 	pString := source.RecommendedAction
 	v1alpha1GpuStatus.RecommendedAction = &pString
 	return &v1alpha1GpuStatus
 }
-func (c *ConverterImpl) ToProtobufUpdateOptions(source v1.UpdateOptions) *v1alpha1.UpdateOptions {
-	var v1alpha1UpdateOptions v1alpha1.UpdateOptions
-	_ = source
-	return &v1alpha1UpdateOptions
+func (c *ConverterImpl) ToProtoUpdateOptions(source *v1.UpdateOptions) *v1alpha1.UpdateOptions {
+	var pV1alpha1UpdateOptions *v1alpha1.UpdateOptions
+	if source != nil {
+		var v1alpha1UpdateOptions v1alpha1.UpdateOptions
+		_ = (*source)
+		pV1alpha1UpdateOptions = &v1alpha1UpdateOptions
+	}
+	return pV1alpha1UpdateOptions
+}
+func (c *ConverterImpl) typesUIDToString(source types.UID) string {
+	return string(source)
 }
 func (c *ConverterImpl) v1ResourceVersionMatchToString(source v1.ResourceVersionMatch) string {
 	return string(source)

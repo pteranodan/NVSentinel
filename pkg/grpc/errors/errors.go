@@ -59,6 +59,8 @@ func NewAPIError(err error, resource string, name string) error {
 			return NewUnprocessableContentType(msg)
 		}
 		return apierrors.NewBadRequest(st.Message())
+	case codes.OutOfRange:
+		return apierrors.NewResourceExpired(st.Message())
 	case codes.Aborted:
 		return apierrors.NewConflict(gr, name, errors.New(st.Message()))
 	case codes.Unavailable, codes.DeadlineExceeded:
@@ -81,8 +83,17 @@ func NewGRPCError(err error, resource string, name string) error {
 	}
 
 	// K8s API errors
-	if apierrors.IsInvalid(err) || apierrors.IsBadRequest(err) {
+	if apierrors.IsInvalid(err) {
 		return status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if apierrors.IsBadRequest(err) {
+		if statusErr, ok := err.(apierrors.APIStatus); ok {
+			return status.Error(codes.InvalidArgument, statusErr.Status().Message)
+		}
+		return status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if apierrors.IsResourceExpired(err) || apierrors.IsGone(err) {
+		return status.Errorf(codes.OutOfRange, "%v", err)
 	}
 
 	// Storage errors

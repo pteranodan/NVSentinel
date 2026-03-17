@@ -15,7 +15,6 @@
 package client
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -25,7 +24,7 @@ import (
 func TestClientConnFor(t *testing.T) {
 	t.Run("Config defaulting does not mutate original", func(t *testing.T) {
 		cfg := &Config{}
-		conn, err := ClientConnFor(context.Background(), cfg)
+		conn, err := ClientConnFor(cfg)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -50,7 +49,7 @@ func TestClientConnFor(t *testing.T) {
 
 	t.Run("Client creation respects WithLogger option", func(t *testing.T) {
 		cfg := &Config{Target: "unix:///tmp/test.sock"}
-		conn, err := ClientConnFor(context.Background(), cfg, WithLogger(logr.Discard()))
+		conn, err := ClientConnFor(cfg, WithLogger(logr.Discard()))
 		if err != nil {
 			t.Fatalf("failed to create client: %v", err)
 		}
@@ -63,7 +62,7 @@ func TestClientConnFor(t *testing.T) {
 			UserAgent: "test/1.0",
 		}
 
-		conn, err := ClientConnFor(context.Background(), cfg)
+		conn, err := ClientConnFor(cfg)
 		if err == nil {
 			conn.Close()
 			t.Fatal("expected error for non-unix target, but got nil")

@@ -25,7 +25,7 @@ import (
 // Config defines configuration for the storage backend.
 type Config struct {
 	StorageConfig apistorage.Config
-	DatabaseDir   string
+	StorageDir    string
 	SocketPath    string
 	KineConfig    endpoint.Config
 }
@@ -42,7 +42,7 @@ func NewConfig(opts options.CompletedOptions) (*Config, error) {
 
 	return &Config{
 		StorageConfig: opts.Etcd.StorageConfig,
-		DatabaseDir:   opts.DatabaseDir,
+		StorageDir:    opts.StorageDir,
 		SocketPath:    opts.SocketPath,
 		KineConfig:    opts.KineConfig,
 	}, nil

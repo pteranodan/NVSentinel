@@ -17,7 +17,6 @@
 package v1alpha1
 
 import (
-	context "context"
 	fmt "fmt"
 
 	logr "github.com/go-logr/logr"
@@ -43,13 +42,13 @@ func (c *DeviceV1alpha1Client) GPUs() GPUInterface {
 // NewForConfig creates a new DeviceV1alpha1Client for the given config.
 // NewForConfig is equivalent to NewForConfigAndClient(c, clientConn),
 // where clientConn was generated with nvgrpc.ClientConnFor(c).
-func NewForConfig(ctx context.Context, c *client.Config) (*DeviceV1alpha1Client, error) {
+func NewForConfig(c *client.Config) (*DeviceV1alpha1Client, error) {
 	if c == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
 	config := *c // Shallow copy to avoid mutation
-	conn, err := client.ClientConnFor(ctx, &config)
+	conn, err := client.ClientConnFor(&config)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +74,8 @@ func NewForConfigAndClient(c *client.Config, conn grpc.ClientConnInterface) (*De
 
 // NewForConfigOrDie creates a new DeviceV1alpha1Client for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(ctx context.Context, c *client.Config) *DeviceV1alpha1Client {
-	client, err := NewForConfig(ctx, c)
+func NewForConfigOrDie(c *client.Config) *DeviceV1alpha1Client {
+	client, err := NewForConfig(c)
 	if err != nil {
 		panic(err)
 	}

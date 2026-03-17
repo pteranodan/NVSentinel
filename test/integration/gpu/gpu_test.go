@@ -29,17 +29,17 @@ import (
 
 func TestGPU(t *testing.T) {
 	testCases := []struct {
-		name           string
-		storageBackend string
+		name        string
+		storageType string
 	}{
-		{name: "OnDisk", storageBackend: apistorage.StorageTypeETCD3},
-		{name: "InMemory", storageBackend: "memory"},
+		{name: "OnDisk", storageType: apistorage.StorageTypeETCD3},
+		{name: "InMemory", storageType: "memory"},
 	}
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			clientset, teardown := framework.SetupServer(t, tc.storageBackend)
+			clientset, teardown := framework.SetupServer(t, tc.storageType)
 			defer teardown()
 
 			ctx := context.Background()

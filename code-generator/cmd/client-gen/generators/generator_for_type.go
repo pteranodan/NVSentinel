@@ -99,41 +99,34 @@ func (g *genClientForType) GenerateType(c *generator.Context, t *types.Type, w i
 	}
 	protoType := titler.String(t.Name.Name)
 	m := map[string]interface{}{
-		"type":                 t,
-		"inputType":            t,
-		"resultType":           t,
-		"package":              pkg,
-		"Package":              namer.IC(pkg),
-		"namespaced":           !tags.NonNamespaced,
-		"Group":                namer.IC(g.group),
-		"GroupGoName":          g.groupGoName,
-		"Version":              namer.IC(g.version),
-		"ProtoType":            protoType,
-		"context":              c.Universe.Type(types.Name{Package: "context", Name: "Context"}),
-		"NewBadRequest":        c.Universe.Function(types.Name{Package: "k8s.io/apimachinery/pkg/api/errors", Name: "NewBadRequest"}),
-		"GetOptions":           c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "GetOptions"}),
-		"ListOptions":          c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "ListOptions"}),
-		"CreateOptions":        c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "CreateOptions"}),
-		"DeleteOptions":        c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "DeleteOptions"}),
-		"UpdateOptions":        c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "UpdateOptions"}),
-		"PatchOptions":         c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "PatchOptions"}),
-		"PatchType":            c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/types", Name: "PatchType"}),
-		"runtime":              c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/runtime", Name: "Object"}),
-		"watchInterface":       c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/watch", Name: "Interface"}),
-		"logr":                 c.Universe.Type(types.Name{Package: "github.com/go-logr/logr", Name: "Logger"}),
-		"nvgrpc":               c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "NewWatcher"}),
-		"NewAPIError":          c.Universe.Function(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/errors", Name: "NewAPIError"}),
-		"pb":                   g.protoPackage.Alias,
-		"apiPackage":           c.Universe.Type(types.Name{Package: g.inputPackage, Name: "Ignored"}),
-		"ToProto":              c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProto"}),
-		"ToProtoGetOptions":    c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoGetOptions"}),
-		"ToProtoUpdateOptions": c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoUpdateOptions"}),
-		"ToProtoListOptions":   c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoListOptions"}),
-		"ToProtoDeleteOptions": c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoDeleteOptions"}),
-		"ToProtoPatchOptions":  c.Universe.Function(types.Name{Package: g.inputPackage, Name: "ToProtoPatchOptions"}),
-		"FromProto":            c.Universe.Function(types.Name{Package: g.inputPackage, Name: "FromProto"}),
-		"FromProtoList":        c.Universe.Function(types.Name{Package: g.inputPackage, Name: "FromProtoList"}),
-		"NewServiceClient":     g.protoPackage.ServiceClientConstructorFor(protoType),
+		"type":             t,
+		"inputType":        t,
+		"resultType":       t,
+		"package":          pkg,
+		"Package":          namer.IC(pkg),
+		"namespaced":       !tags.NonNamespaced,
+		"Group":            namer.IC(g.group),
+		"GroupGoName":      g.groupGoName,
+		"Version":          namer.IC(g.version),
+		"ProtoType":        protoType,
+		"context":          c.Universe.Type(types.Name{Package: "context", Name: "Context"}),
+		"NewBadRequest":    c.Universe.Function(types.Name{Package: "k8s.io/apimachinery/pkg/api/errors", Name: "NewBadRequest"}),
+		"GetOptions":       c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "GetOptions"}),
+		"ListOptions":      c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "ListOptions"}),
+		"CreateOptions":    c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "CreateOptions"}),
+		"DeleteOptions":    c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "DeleteOptions"}),
+		"UpdateOptions":    c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "UpdateOptions"}),
+		"PatchOptions":     c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "PatchOptions"}),
+		"PatchType":        c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/types", Name: "PatchType"}),
+		"runtime":          c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/runtime", Name: "Object"}),
+		"watchInterface":   c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/watch", Name: "Interface"}),
+		"logr":             c.Universe.Type(types.Name{Package: "github.com/go-logr/logr", Name: "Logger"}),
+		"nvgrpc":           c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "NewWatcher"}),
+		"NewAPIError":      c.Universe.Function(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/errors", Name: "NewAPIError"}),
+		"pb":               g.protoPackage.Alias,
+		"apiPackage":       c.Universe.Type(types.Name{Package: g.inputPackage, Name: "Ignored"}),
+		"Converter":        c.Universe.Type(types.Name{Package: g.inputPackage, Name: "Converter"}),
+		"NewServiceClient": g.protoPackage.ServiceClientConstructorFor(protoType),
 	}
 
 	sw.Do(getterComment, m)
@@ -250,6 +243,7 @@ var structTemplateNamespaced = `
 // $.type|allLowercasePlural$ implements $.type|public$Interface
 type $.type|allLowercasePlural$ struct {
 	client    $.pb$.$.ProtoType$ServiceClient
+	$.Converter|raw$
 	logger    $.logr|raw$
 	namespace string
 }
@@ -259,6 +253,7 @@ var structTemplateNonNamespaced = `
 // $.type|allLowercasePlural$ implements $.type|public$Interface
 type $.type|allLowercasePlural$ struct {
 	client $.pb$.$.ProtoType$ServiceClient
+	$.Converter|raw$
 	logger $.logr|raw$
 }
 `
@@ -268,6 +263,7 @@ var constructorTemplateNamespaced = `
 func new$.type|publicPlural$(c *$.GroupGoName$$.Version$Client, namespace string) *$.type|allLowercasePlural$ {
 	return &$.type|allLowercasePlural${
 		client:    $.NewServiceClient$(c.ClientConn()),
+		Converter: &$.Converter|raw$Impl{},
 		logger:    c.logger.WithName("$.type|allLowercasePlural$"),
 		namespace: namespace,
 	}
@@ -279,6 +275,7 @@ var constructorTemplateNonNamespaced = `
 func new$.type|publicPlural$(c *$.GroupGoName$$.Version$Client) *$.type|allLowercasePlural$ {
 	return &$.type|allLowercasePlural${
 		client: $.NewServiceClient$(c.ClientConn()),
+		Converter: &$.Converter|raw$Impl{},
 		logger: c.logger.WithName("$.type|allLowercasePlural$"),
 	}
 }
@@ -292,33 +289,48 @@ func (c *$.type|allLowercasePlural$) getNamespace() *string {
 	}
 	return $if .namespaced$c.namespace$else$&ns$end$
 }
+
+func (c *$.type|allLowercasePlural$) fromProto(p *$.pb$.$.ProtoType$) *$.type|raw$ {
+	if p == nil {
+		return nil
+	}
+	obj := c.FromProto(p)
+	obj.Default()
+	return obj
+}
+
+func (c *$.type|allLowercasePlural$) fromProtoList(p *$.pb$.$.ProtoType$List) *$.type|raw$List {
+	if p == nil {
+		return nil
+	}
+	obj := &$.type|raw$List{
+		ListMeta: c.FromProtoListMeta(p.ListMeta),
+	}
+	for _, item := range p.Items {
+		obj.Items = append(obj.Items, *c.fromProto(item))
+	}
+	return obj
+}
 `
 
 var listTemplate = `
 func (c *$.type|allLowercasePlural$) List(ctx $.context|raw$, opts $.ListOptions|raw$) (*$.type|raw$List, error) {
-	if opts.LabelSelector != "" || opts.FieldSelector != "" {
+	if opts.FieldSelector != "" {
 		return nil, $.NewBadRequest|raw$("selectors are not supported for this resource")
 	}
 	if opts.Limit > 0 || opts.Continue != "" {
         return nil, $.NewBadRequest|raw$("pagination (limit/continue) is not supported for this resource")
     }
 
-	if opts.AllowWatchBookmarks {
-		c.logger.V(6).Info("Ignoring unsupported list option", "option", "allowWatchBookmarks")
-    }
-    if opts.SendInitialEvents != nil {
-		c.logger.V(6).Info("Ignoring unsupported list option", "option", "sendInitialEvents")
-    }
-
 	resp, err := c.client.List$.ProtoType$s(ctx, &$.pb$.List$.ProtoType$sRequest{
 		Namespace: c.getNamespace(),
-		Opts:      $.ToProtoListOptions|raw$(opts),
+		Opts:      c.ToProtoListOptions(&opts),
 	})
 	if err != nil {
 		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", "")
 	}
 
-	list := $.FromProtoList|raw$(resp.Get$.ProtoType$List())
+	list := c.FromProtoList(resp.Get$.ProtoType$List())
 	c.logger.V(5).Info("Listed $.type|public$s",
 		"namespace", c.getNamespace(),
 		"count", len(list.Items),
@@ -334,13 +346,13 @@ func (c *$.type|allLowercasePlural$) Get(ctx $.context|raw$, name string, opts $
 	resp, err := c.client.Get$.ProtoType$(ctx, &$.pb$.Get$.ProtoType$Request{
 		Name:      name,
 		Namespace: c.getNamespace(),
-		Opts:      $.ToProtoGetOptions|raw$(opts),
+		Opts:      c.ToProtoGetOptions(&opts),
 	})
 	if err != nil {
 		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", name)
 	}
 
-	obj := $.FromProto|raw$(resp.Get$.ProtoType$())
+	obj := c.fromProto(resp.Get$.ProtoType$())
 	c.logger.V(6).Info("Fetched $.type|public$",
 		"name", name,
 		"namespace", c.getNamespace(),
@@ -370,7 +382,7 @@ func (c *$.type|allLowercasePlural$) Delete(ctx $.context|raw$, name string, opt
 	_, err := c.client.Delete$.ProtoType$(ctx, &$.pb$.Delete$.ProtoType$Request{
 		Name:      name,
 		Namespace: c.getNamespace(),
-		Opts:      $.ToProtoDeleteOptions|raw$(opts), 
+		Opts:      c.ToProtoDeleteOptions(&opts), 
 	})
 	if err != nil {
 		return $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", name)
@@ -399,14 +411,14 @@ func (c *$.type|allLowercasePlural$) Create(ctx $.context|raw$, $.type|allLowerc
 	}
 
 	resp, err := c.client.Create$.ProtoType$(ctx, &$.pb$.Create$.ProtoType$Request{
-		$.ProtoType$: $.ToProto|raw$($.type|allLowercase$),	
+		$.ProtoType$: c.ToProto($.type|allLowercase$),	
 		Opts:         &$.pb$.CreateOptions{},
 	})
 	if err != nil {
 		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", $.type|allLowercase$.GetName())
 	}
 
-	obj := $.FromProto|raw$(resp)
+	obj := c.fromProto(resp)
 	c.logger.V(2).Info("Created $.type|public$",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
@@ -432,14 +444,14 @@ func (c *$.type|allLowercasePlural$) Update(ctx $.context|raw$, $.type|allLowerc
 	}
 
 	resp, err := c.client.Update$.ProtoType$(ctx, &$.pb$.Update$.ProtoType$Request{
-		$.ProtoType$: $.ToProto|raw$($.type|allLowercase$),	
-		Opts:         $.ToProtoUpdateOptions|raw$(opts),
+		$.ProtoType$: c.ToProto($.type|allLowercase$),	
+		Opts:         c.ToProtoUpdateOptions(&opts),
 	})
 	if err != nil {
 		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", $.type|allLowercase$.GetName())
 	}
 
-	obj := $.FromProto|raw$(resp)
+	obj := c.fromProto(resp)
 	c.logger.V(2).Info("Updated $.type|public$",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
@@ -465,14 +477,14 @@ func (c *$.type|allLowercasePlural$) UpdateStatus(ctx $.context|raw$, $.type|all
 	}
 
 	resp, err := c.client.Update$.ProtoType$Status(ctx, &$.pb$.Update$.ProtoType$StatusRequest{
-		$.ProtoType$: $.ToProto|raw$($.type|allLowercase$),
-		Opts:         $.ToProtoUpdateOptions|raw$(opts),
+		$.ProtoType$: c.ToProto($.type|allLowercase$),
+		Opts:         c.ToProtoUpdateOptions(&opts),
 	})
 	if err != nil {
 		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", $.type|allLowercase$.GetName())
 	}
 
-	obj := $.FromProto|raw$(resp)
+	obj := c.fromProto(resp)
 	c.logger.V(2).Info("Updated $.type|public$ status",
 		"name", obj.GetName(),
 		"namespace", c.getNamespace(),
@@ -486,38 +498,43 @@ func (c *$.type|allLowercasePlural$) UpdateStatus(ctx $.context|raw$, $.type|all
 
 var watchTemplate = `
 func (c *$.type|allLowercasePlural$) Watch(ctx $.context|raw$, opts $.ListOptions|raw$) ($.watchInterface|raw$, error) {
-	if opts.LabelSelector != "" || opts.FieldSelector != "" {
+	if opts.FieldSelector != "" {
         return nil, $.NewBadRequest|raw$("selectors are not supported for this resource")
     }
 	if opts.Limit > 0 || opts.Continue != "" {
         return nil, $.NewBadRequest|raw$("pagination (limit/continue) is not supported for this resource")
     }
 
-	if opts.AllowWatchBookmarks {
-		c.logger.V(6).Info("Ignoring unsupported list option", "option", "allowWatchBookmarks")
-    }
-    if opts.SendInitialEvents != nil {
-		c.logger.V(6).Info("Ignoring unsupported list option", "option", "sendInitialEvents")
-    }
+	if opts.SendInitialEvents != nil && *opts.SendInitialEvents == true {
+		if opts.ResourceVersionMatch != v1.ResourceVersionMatchNotOlderThan {
+			return nil, apierrors.NewBadRequest("resourceVersionMatch must be NotOlderThan when sendInitialEvents is true")
+		}
+	}
 
 	c.logger.V(4).Info("Opening watch stream",
-		"resource",         "$.type|allLowercasePlural$",
-		"namespace",        c.getNamespace(),
+		"watch", opts.Watch,
+		"allowWatchBookmarks", opts.AllowWatchBookmarks,
+		"resource", "$.type|allLowercasePlural$",
+		"namespace", c.getNamespace(),
 		"resource-version", opts.ResourceVersion,
-		"timeout-seconds",  opts.TimeoutSeconds,
+		"timeout-seconds", opts.TimeoutSeconds,
+		"sendInitialEvents", func(b *bool) any {
+			if b == nil { return "nil" }
+			return *b
+		}(opts.SendInitialEvents),
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
 	stream, err := c.client.Watch$.ProtoType$s(ctx, &$.pb$.Watch$.ProtoType$sRequest{
 		Namespace: c.getNamespace(),
-		Opts:      $.ToProtoListOptions|raw$(opts),
+		Opts:      c.ToProtoListOptions(&opts),
 	})
 	if err != nil {
 		cancel()
 		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", "")
 	}
 
-	return $.nvgrpc|raw$(&$.type|allLowercasePlural$StreamAdapter{stream: stream}, cancel, c.logger), nil
+	return $.nvgrpc|raw$(&$.type|allLowercasePlural$StreamAdapter{stream: stream, Converter: c.Converter}, cancel, c.logger), nil
 }
 `
 
@@ -525,15 +542,16 @@ var watchAdapterTemplate = `
 // $.type|allLowercasePlural$StreamAdapter wraps the $.type|public$ gRPC stream to provide events.
 type $.type|allLowercasePlural$StreamAdapter struct {
 	stream $.pb$.$.ProtoType$Service_Watch$.ProtoType$sClient
+	$.Converter|raw$
 }
 
 func (a *$.type|allLowercasePlural$StreamAdapter) Next() (string, $.runtime|raw$, error) {
 	resp, err := a.stream.Recv()
 	if err != nil {
-		return "", nil, err
+		return string(watch.Error), nil, err
 	}
 
-	obj := $.FromProto|raw$(resp.GetObject())
+	obj := a.FromProto(resp.GetObject())
 
 	return resp.GetType(), obj, nil
 }
@@ -564,14 +582,14 @@ func (c *$.type|allLowercasePlural$) Patch(ctx $.context|raw$, name string, pt $
 		Namespace: c.getNamespace(),
 		PatchType: string(pt),
 		Data: data,
-		Opts:         $.ToProtoPatchOptions|raw$(opts),
+		Opts:         c.ToProtoPatchOptions(&opts),
 		Subresources: subresources,
 	})
 	if err != nil {
 		return nil, $.NewAPIError|raw$(err, "$.type|allLowercasePlural$", name)
 	}
 
-	obj := $.FromProto|raw$(resp)
+	obj := c.fromProto(resp)
 	c.logger.V(2).Info("Patched $.type|public$",
 		"name", name,
 		"namespace", c.getNamespace(),

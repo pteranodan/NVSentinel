@@ -24,7 +24,7 @@ import (
 	"time"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
+	"github.com/nvidia/nvsentinel/pkg/client-go/clientset"
 	"github.com/nvidia/nvsentinel/test/integration/framework"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -36,24 +36,24 @@ import (
 
 func TestWatchRestarts(t *testing.T) {
 	testCases := []struct {
-		name           string
-		storageBackend string
+		name        string
+		storageType string
 	}{
-		{name: "OnDisk", storageBackend: apistorage.StorageTypeETCD3},
-		{name: "InMemory", storageBackend: "memory"},
+		{name: "OnDisk", storageType: apistorage.StorageTypeETCD3},
+		{name: "InMemory", storageType: "memory"},
 	}
 
 	for _, backendTC := range testCases {
 		backendTC := backendTC
 		t.Run(backendTC.name, func(t *testing.T) {
-			clientset, teardown := framework.SetupServer(t, backendTC.storageBackend)
+			cs, teardown := framework.SetupServer(t, backendTC.storageType)
 			defer teardown()
 
 			timeout := 2 * time.Second
 			initialUUID := "gpu-initial-uuid"
 			const numEvents = 5
 
-			generateEvents := func(ctx context.Context, t *testing.T, c versioned.Interface, gpu *devicev1alpha1.GPU, stopChan chan struct{}, stoppedChan chan struct{}) []string {
+			generateEvents := func(ctx context.Context, t *testing.T, c clientset.Interface, gpu *devicev1alpha1.GPU, stopChan chan struct{}, stoppedChan chan struct{}) []string {
 				defer close(stoppedChan)
 				var expected []string
 
@@ -109,14 +109,14 @@ func TestWatchRestarts(t *testing.T) {
 				name                string
 				succeed             bool
 				gpu                 *devicev1alpha1.GPU
-				getWatcher          func(c versioned.Interface, gpu *devicev1alpha1.GPU) (watch.Interface, error, func())
+				getWatcher          func(c clientset.Interface, gpu *devicev1alpha1.GPU) (watch.Interface, error, func())
 				normalizeOutputFunc func(expected []string) []string
 			}{
 				{
 					name:    "Watcher fails on connection close",
 					succeed: false,
 					gpu:     newTestGPU("watcher"),
-					getWatcher: func(c versioned.Interface, gpu *devicev1alpha1.GPU) (watch.Interface, error, func()) {
+					getWatcher: func(c clientset.Interface, gpu *devicev1alpha1.GPU) (watch.Interface, error, func()) {
 						w, err := c.DeviceV1alpha1().GPUs().Watch(context.TODO(), metav1.ListOptions{
 							ResourceVersion: gpu.ResourceVersion,
 						})
@@ -128,7 +128,7 @@ func TestWatchRestarts(t *testing.T) {
 					name:    "RetryWatcher survives closed watches",
 					succeed: true,
 					gpu:     newTestGPU("retry-watcher"),
-					getWatcher: func(c versioned.Interface, gpu *devicev1alpha1.GPU) (watch.Interface, error, func()) {
+					getWatcher: func(c clientset.Interface, gpu *devicev1alpha1.GPU) (watch.Interface, error, func()) {
 						lw := &cache.ListWatch{
 							WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 								return c.DeviceV1alpha1().GPUs().Watch(context.TODO(), options)
@@ -150,7 +150,7 @@ func TestWatchRestarts(t *testing.T) {
 
 					gpuName := fmt.Sprintf("%s-%s", backendTC.name, tc.name)
 
-					gpu, err := clientset.DeviceV1alpha1().GPUs().Create(ctx, &devicev1alpha1.GPU{
+					gpu, err := cs.DeviceV1alpha1().GPUs().Create(ctx, &devicev1alpha1.GPU{
 						ObjectMeta: metav1.ObjectMeta{Name: gpuName},
 						Spec:       devicev1alpha1.GPUSpec{UUID: initialUUID},
 					}, metav1.CreateOptions{})
@@ -158,7 +158,7 @@ func TestWatchRestarts(t *testing.T) {
 						t.Fatalf("failed to create GPU: %v", err)
 					}
 
-					watcher, err, doneFn := tc.getWatcher(clientset, gpu)
+					watcher, err, doneFn := tc.getWatcher(cs, gpu)
 					if err != nil {
 						t.Fatalf("failed to create watcher: %v", err)
 					}
@@ -169,7 +169,7 @@ func TestWatchRestarts(t *testing.T) {
 
 					var expected []string
 					go func() {
-						expected = generateEvents(ctx, t, clientset, gpu, stopChan, stoppedChan)
+						expected = generateEvents(ctx, t, cs, gpu, stopChan, stoppedChan)
 					}()
 
 					watchCtx, cancel := watchtools.ContextWithOptionalTimeout(ctx, timeout)
@@ -179,7 +179,7 @@ func TestWatchRestarts(t *testing.T) {
 					_, err = watchtools.UntilWithoutRetry(watchCtx, watcher, func(event watch.Event) (bool, error) {
 						if event.Type == watch.Error {
 							if status, ok := event.Object.(*metav1.Status); ok && status.Code == 410 {
-								if backendTC.storageBackend == "memory" {
+								if backendTC.storageType == "memory" {
 									framework.SkipWithWarning(t, fmt.Sprintf("watch error: %v", event.Object))
 								}
 							}

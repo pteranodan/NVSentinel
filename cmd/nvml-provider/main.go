@@ -38,8 +38,8 @@ import (
 	"k8s.io/klog/v2"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
-	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
+	"github.com/nvidia/nvsentinel/pkg/client-go/device"
+	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/device/typed/device/v1alpha1"
 	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 	nvmlpkg "github.com/nvidia/nvsentinel/pkg/provider/nvml"
 )
@@ -302,10 +302,11 @@ func (p *Provider) shutdownNVML() {
 func (p *Provider) initClientset() error {
 	config := &client.Config{Target: p.config.BindAddress}
 
-	clientset, err := versioned.NewForConfig(p.ctx, config)
+	clientset, err := device.NewForConfig(config)
 	if err != nil {
 		return err
 	}
+	defer clientset.Close()
 
 	p.gpuClient = clientset.DeviceV1alpha1().GPUs()
 

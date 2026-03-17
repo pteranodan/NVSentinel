@@ -1,41 +1,31 @@
 # NVIDIA Device API: Go Client Examples
-
-This directory contains examples demonstrating various use cases and functionality of the NVIDIA Device API Go client.
+This directory contains examples demonstrating how to use the NVIDIA Device API Go client across various integration patterns.
 
 ---
 
 ## Integration Patterns
-
 | Example | Focus | Use Case |
 | :--- | :--- | :--- |
 | **[Basic Client](./client)** | **Point-in-Time Discovery** | CLI tools and scripts |
-| **[Watch Monitor](./watch)** | **Asynchronous Operations** | Real-time event-driven monitoring |
-| **[Controller](./controller)** | **State Enforcement** | `controller-runtime` Reconcilers driven by node-local state |
-| **[Fake Client](./fake-client)** | **Unit Testing** | Testing logic using the in-memory `ObjectTracker` without a server |
+| **[Watch Monitor](./watch)** | **Stream Processing** | Real-time event-driven monitoring |
+| **[Controller](./controller)** | **Standard Controllers** | `controller-runtime` / Kubebuilder |
+| **[Fake Client](./fake-client)** | **Unit Testing** | Testing without a server |
 
 ---
 
-## Prerequisites
+## Usage
+Most examples require a connection to a running Device API server.
 
-The examples utilize a [Fake Device API Server](./fake-server) to simulate a local environment. This server maintains an in-memory inventory of mock GPUs and generates synthetic status events (e.g., toggling `Ready` conditions).
+1. **Start the mock server**: Follow the [setup instructions](../server/README.md).
 
+2. **Configure the client**: Run the unique `export` command printed by the server in your current terminal:
 ```bash
-# Start the simulated device apiserver
-sudo go run ./fake-server/main.go
-```
-To stop the server, press `Ctrl+C`
-
-## Running Examples
-
-With the server running, navigate to an example directory and run it:
-
-```bash
-# Example: Running the basic client
-cd client/
-sudo go run main.go
+export NVIDIA_DEVICE_API_SOCK=unix://<path_to_socket>
 ```
 
-> [!TIP] 
-> **Permissions**: By default, the server attempts to create a socket in `var/run`. If you do not have root privileges, override the target path using an environment variable: `export NVIDIA_DEVICE_API_TARGET="unix:///tmp/device-api.sock"`
+3. **Run an Example**: Navigate to an example directory or run it directly:
+```bash
+go run ./client/main.go
+```
 
 ---

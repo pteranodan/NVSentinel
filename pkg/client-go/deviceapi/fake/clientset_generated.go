@@ -17,9 +17,9 @@
 package fake
 
 import (
-	clientset "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
-	devicev1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
-	fakedevicev1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1/fake"
+	clientset "github.com/nvidia/nvsentinel/pkg/client-go/deviceapi"
+	devicev1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/deviceapi/typed/device/v1alpha1"
+	fakedevicev1alpha1 "github.com/nvidia/nvsentinel/pkg/client-go/deviceapi/typed/device/v1alpha1/fake"
 	grpc "google.golang.org/grpc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"

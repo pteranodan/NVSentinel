@@ -14,7 +14,6 @@
 
 package options_test
 
-// TODO: update test cases
 import (
 	"strings"
 	"testing"
@@ -32,17 +31,21 @@ func TestAddFlags(t *testing.T) {
 
 	fs := fss.FlagSet("storage")
 	args := []string{
-		"--storage-backend=etcd3",
+		"--storage-type=etcd3",
 		"--storage-initialization-timeout=2m",
 		"--storage-readycheck-timeout=5s",
-		"--database-path=/tmp/custom.db",
-		"--database-max-open-connections=8",
-		"--database-max-idle-connections=4",
-		"--database-connection-max-lifetime=1h",
+		"--storage-endpoint=/tmp/custom.db",
+		"--storage-max-open-connections=8",
+		"--storage-max-idle-connections=4",
+		"--storage-connection-max-lifetime=1h",
 		"--etcd-version=3.6.5",
-		"--etcd-compaction-interval=2m",
-		"--etcd-compaction-batch-size=5000",
 		"--etcd-watch-progress-notify-interval=30s",
+		"--etcd-compaction-interval=2m",
+		"--etcd-compaction-interval-jitter=5",
+		"--etcd-compaction-timeout=3m",
+		"--etcd-compaction-min-retain=500",
+		"--etcd-compaction-batch-size=500",
+		"--etcd-poll-batch-size=500",
 	}
 
 	err := fs.Parse(args)
@@ -50,40 +53,52 @@ func TestAddFlags(t *testing.T) {
 		t.Fatalf("Failed to parse flags: %v", err)
 	}
 
-	if o.StorageBackend != "etcd3" {
-		t.Errorf("expected StorageBackend 'etcd3', got %s", o.StorageBackend)
+	if o.Type != "etcd3" {
+		t.Errorf("expected Type 'etcd3', got %s", o.Type)
 	}
-	if o.StorageInitializationTimeout != 2*time.Minute {
-		t.Errorf("expected StorageInitializationTimeout '2m', got %s", o.StorageInitializationTimeout)
+	if o.InitializationTimeout != 2*time.Minute {
+		t.Errorf("expected InitializationTimeout '2m', got %s", o.InitializationTimeout)
 	}
-	if o.StorageReadycheckTimeout != 5*time.Second {
-		t.Errorf("expected StoraageReadycheckTimeout '5s', got %s", o.StorageReadycheckTimeout)
+	if o.ReadycheckTimeout != 5*time.Second {
+		t.Errorf("expected StoraageReadycheckTimeout '5s', got %s", o.ReadycheckTimeout)
 	}
 
-	if o.DatabasePath != "/tmp/custom.db" {
-		t.Errorf("expected DatabasePath '/tmp/custom.db', got %s", o.DatabasePath)
+	if o.Endpoint != "/tmp/custom.db" {
+		t.Errorf("expected Endpoint '/tmp/custom.db', got %s", o.Endpoint)
 	}
-	if o.DatabaseMaxOpenConns != 8 {
-		t.Errorf("expected DatabaseMaxOpenConns 8, got %d", o.DatabaseMaxOpenConns)
+	if o.MaxOpenConns != 8 {
+		t.Errorf("expected MaxOpenConns 7, got %d", o.MaxOpenConns)
 	}
-	if o.DatabaseMaxIdleConns != 4 {
-		t.Errorf("expected DatabaseMaxIdleConns 4, got %d", o.DatabaseMaxIdleConns)
+	if o.MaxIdleConns != 4 {
+		t.Errorf("expected MaxIdleConns 4, got %d", o.MaxIdleConns)
 	}
-	if o.DatabaseMaxConnLifetime != time.Hour {
-		t.Errorf("expected DatabaseMaxConnLifetime 1h, got %v", o.DatabaseMaxConnLifetime)
+	if o.MaxConnLifetime != time.Hour {
+		t.Errorf("expected MaxConnLifetime 1h, got %v", o.MaxConnLifetime)
 	}
 
 	if o.EtcdVersion != "3.6.5" {
 		t.Errorf("expected EtcdVersion '3.6.5', got %s", o.EtcdVersion)
 	}
+	if o.EtcdWatchProgressNotifyInterval != 30*time.Second {
+		t.Errorf("expected EtcdWatchProgressNotifyInterval '30s', got %s", o.EtcdWatchProgressNotifyInterval)
+	}
 	if o.EtcdCompactionInterval != 2*time.Minute {
 		t.Errorf("expected EtcdCompactionInterval '2m', got %s", o.EtcdCompactionInterval)
 	}
-	if o.EtcdCompactionBatchSize != 5000 {
-		t.Errorf("expected EtcdCompactionBatchSize '5000', got %d", o.EtcdCompactionBatchSize)
+	if o.EtcdCompactionIntervalJitter != 5 {
+		t.Errorf("expected EtcdCompactionIntervalJitter '5', got %d", o.EtcdCompactionIntervalJitter)
 	}
-	if o.EtcdWatchProgressNotifyInterval != 30*time.Second {
-		t.Errorf("expected EtcdWatchProgressNotifyInterval '30s', got %s", o.EtcdWatchProgressNotifyInterval)
+	if o.EtcdCompactionTimeout != 3*time.Minute {
+		t.Errorf("expected EtcdCompactionTimeout '3m', got %s", o.EtcdCompactionTimeout)
+	}
+	if o.EtcdCompactionMinRetain != 500 {
+		t.Errorf("expected EtcdCompactionMinRetain '500', got %d", o.EtcdCompactionMinRetain)
+	}
+	if o.EtcdCompactionBatchSize != 500 {
+		t.Errorf("expected EtcdCompactionBatchSize '500', got %d", o.EtcdCompactionBatchSize)
+	}
+	if o.EtcdPollBatchSize != 500 {
+		t.Errorf("expected EtcdPollBatchSize '500', got %d", o.EtcdPollBatchSize)
 	}
 }
 
@@ -96,14 +111,14 @@ func TestComplete(t *testing.T) {
 			t.Fatalf("Complete failed: %v", err)
 		}
 
-		if completed.StorageBackend != apistorage.StorageTypeETCD3 {
-			t.Errorf("expected default storage backend %v, got %v", apistorage.StorageTypeETCD3, completed.StorageBackend)
+		if completed.Type != apistorage.StorageTypeETCD3 {
+			t.Errorf("expected default storage backend %v, got %v", apistorage.StorageTypeETCD3, completed.Type)
 		}
 		if completed.SocketPath != "/var/run/nvidia-device-api/kine.sock" {
 			t.Errorf("expected Kine socket path, got %v", completed.SocketPath)
 		}
-		if completed.DatabaseDir != "/var/lib/nvidia-device-api" {
-			t.Errorf("expected DatabaseDir derived from DSN, got %v", completed.DatabaseDir)
+		if completed.StorageDir != "/var/lib/nvidia-device-api" {
+			t.Errorf("expected StorageDir derived from DSN, got %v", completed.StorageDir)
 		}
 
 		kineConfig := completed.KineConfig
@@ -154,9 +169,9 @@ func TestComplete(t *testing.T) {
 		}
 	})
 
-	t.Run("Custom DatabasePath", func(t *testing.T) {
+	t.Run("Custom Endpoint", func(t *testing.T) {
 		opts := options.NewOptions()
-		opts.DatabasePath = "sqlite:///custom/path/data.db?_timeout=5000"
+		opts.Endpoint = "sqlite:///custom/path/data.db?_timeout=5000"
 
 		completed, err := opts.Complete()
 		if err != nil {
@@ -164,18 +179,18 @@ func TestComplete(t *testing.T) {
 		}
 
 		expectedDir := "/custom/path"
-		if completed.DatabaseDir != expectedDir {
-			t.Errorf("expected DatabaseDir %q, got %q", expectedDir, completed.DatabaseDir)
+		if completed.StorageDir != expectedDir {
+			t.Errorf("expected StorageDir %q, got %q", expectedDir, completed.StorageDir)
 		}
 		expectedEndpoint := "sqlite:///custom/path/data.db?_timeout=5000"
 		if completed.KineConfig.Endpoint != expectedEndpoint {
-			t.Errorf("expected Kine endpoint to match custom DatabasePath, got %v", completed.KineConfig.Endpoint)
+			t.Errorf("expected Kine endpoint to match custom Endpoint, got %v", completed.KineConfig.Endpoint)
 		}
 	})
 
 	t.Run("Disabled Connection Pooling", func(t *testing.T) {
 		opts := options.NewOptions()
-		opts.DatabaseMaxIdleConns = 0
+		opts.MaxIdleConns = 0
 
 		completed, err := opts.Complete()
 		if err != nil {
@@ -191,7 +206,7 @@ func TestComplete(t *testing.T) {
 
 	t.Run("InMemory", func(t *testing.T) {
 		opts := options.NewOptions()
-		opts.StorageBackend = options.StorageTypeMemory
+		opts.Type = options.StorageTypeMemory
 
 		completed, err := opts.Complete()
 		if err != nil {
@@ -222,23 +237,71 @@ func TestValidate(t *testing.T) {
 		{
 			name: "In-memory storage type ignores SQLite paths",
 			modify: func(o *options.Options) {
-				o.StorageBackend = options.StorageTypeMemory
-				o.DatabasePath = "" // should not trigger "required" error
+				o.Type = options.StorageTypeMemory
+				o.Endpoint = "" // should not trigger "required" error
 			},
 			wantErr: false,
 		},
 		{
 			name: "Invalid storage backend type",
 			modify: func(o *options.Options) {
-				o.StorageBackend = "postgres"
+				o.Type = "postgres"
 			},
 			wantErr:     true,
 			errContains: "invalid, allowed values",
 		},
 		{
+			name: "Storage endpoint required for etcd-shim backends",
+			modify: func(o *options.Options) {
+				o.Type = apistorage.StorageTypeETCD3
+				o.Endpoint = ""
+			},
+			wantErr:     true,
+			errContains: "--storage-endpoint: required",
+		},
+		{
+			name: "Storage endpoint valid with query params",
+			modify: func(o *options.Options) {
+				o.Endpoint = "sqlite:///path/to/db.state?cache=shared&mode=ro"
+			},
+			wantErr: false,
+		},
+		{
+			name: "Storage endpoint contains host",
+			modify: func(o *options.Options) {
+				o.Endpoint = "sqlite://somehost/path/to/db.state"
+			},
+			wantErr:     true,
+			errContains: "host \"somehost\" must be empty",
+		},
+		{
+			name: "Storage endpoint missing scheme",
+			modify: func(o *options.Options) {
+				o.Endpoint = "/path/to/db.state"
+			},
+			wantErr:     true,
+			errContains: "must start with \"sqlite://\"",
+		},
+		{
+			name: "Storage endpoint invalid scheme",
+			modify: func(o *options.Options) {
+				o.Endpoint = "sqlit:///path/to/db.state"
+			},
+			wantErr:     true,
+			errContains: "must start with \"sqlite://\"",
+		},
+		{
+			name: "Storage endpoint relative path",
+			modify: func(o *options.Options) {
+				o.Endpoint = "sqlite://relative/path.db"
+			},
+			wantErr:     true,
+			errContains: "host \"relative\" must be empty",
+		},
+		{
 			name: "Storage initialization timeout too low",
 			modify: func(o *options.Options) {
-				o.StorageInitializationTimeout = 500 * time.Millisecond
+				o.InitializationTimeout = 500 * time.Millisecond
 			},
 			wantErr:     true,
 			errContains: "must be at least 1s",
@@ -246,39 +309,24 @@ func TestValidate(t *testing.T) {
 		{
 			name: "Readycheck timeout exceeds initialization timeout",
 			modify: func(o *options.Options) {
-				o.StorageInitializationTimeout = 5 * time.Second
-				o.StorageReadycheckTimeout = 10 * time.Second
+				o.InitializationTimeout = 5 * time.Second
+				o.ReadycheckTimeout = 10 * time.Second
 			},
 			wantErr:     true,
 			errContains: "must be less than or equal to",
 		},
 		{
-			name: "Relative database path",
+			name: "Storage max connections invalid",
 			modify: func(o *options.Options) {
-				o.DatabasePath = "relative/path.db"
-			},
-			wantErr:     true,
-			errContains: "must be an absolute path",
-		},
-		{
-			name: "Database path with sqlite scheme is valid",
-			modify: func(o *options.Options) {
-				o.DatabasePath = "sqlite:///var/lib/nvsentinel/state.db"
-			},
-			wantErr: false,
-		},
-		{
-			name: "Database Max Connections invalid (SQLite WAL requirement)",
-			modify: func(o *options.Options) {
-				o.DatabaseMaxOpenConns = 1
+				o.MaxOpenConns = 1
 			},
 			wantErr:     true,
 			errContains: "must be less than or equal to 0 (unlimited) or greater than 2",
 		},
 		{
-			name: "Database connection max lifetime negative",
+			name: "Storage connection max lifetime negative",
 			modify: func(o *options.Options) {
-				o.DatabaseMaxConnLifetime = -1 * time.Second
+				o.MaxConnLifetime = -1 * time.Second
 			},
 			wantErr:     true,
 			errContains: "must be 0 (unlimited) or a positive duration",
@@ -286,19 +334,18 @@ func TestValidate(t *testing.T) {
 		{
 			name: "Idle connections cannot exceed Max open connections",
 			modify: func(o *options.Options) {
-				o.DatabaseMaxOpenConns = 5
-				o.DatabaseMaxIdleConns = 10
+				o.MaxOpenConns = 5
+				o.MaxIdleConns = 10
 			},
 			wantErr:     true,
 			errContains: "must be less than or equal to",
 		},
 		{
-			name: "Compaction batch size too large",
+			name: "Compaction interval disabled",
 			modify: func(o *options.Options) {
-				o.EtcdCompactionBatchSize = 50000
+				o.EtcdCompactionInterval = 0
 			},
-			wantErr:     true,
-			errContains: "must be between",
+			wantErr: false,
 		},
 		{
 			name: "Compaction interval too low",
@@ -309,9 +356,95 @@ func TestValidate(t *testing.T) {
 			errContains: "must be 0 (disable) or at least",
 		},
 		{
+			name: "Compaction interval jitter negative",
+			modify: func(o *options.Options) {
+				o.EtcdCompactionInterval = 5 * time.Minute
+				o.EtcdCompactionIntervalJitter = -10
+			},
+			wantErr:     true,
+			errContains: "must be between 0 and 100",
+		},
+		{
+			name: "Compaction interval jitter out of range",
+			modify: func(o *options.Options) {
+				o.EtcdCompactionInterval = 5 * time.Minute
+				o.EtcdCompactionIntervalJitter = 150
+			},
+			wantErr:     true,
+			errContains: "must be between 0 and 100",
+		},
+		{
+			name: "Compaction min retain too small",
+			modify: func(o *options.Options) {
+				o.EtcdCompactionInterval = 5 * time.Minute
+				o.EtcdCompactionMinRetain = 50
+			},
+			wantErr:     true,
+			errContains: "must be between",
+		},
+		{
+			name: "Compaction min retain out of range",
+			modify: func(o *options.Options) {
+				o.EtcdCompactionInterval = 5 * time.Minute
+				o.EtcdCompactionMinRetain = 50000
+			},
+			wantErr:     true,
+			errContains: "must be between",
+		},
+		{
+			name: "Compaction batch size too small",
+			modify: func(o *options.Options) {
+				o.EtcdCompactionInterval = 5 * time.Minute
+				o.EtcdCompactionBatchSize = 10
+			},
+			wantErr:     true,
+			errContains: "must be between",
+		},
+		{
+			name: "Compaction batch size out of range",
+			modify: func(o *options.Options) {
+				o.EtcdCompactionBatchSize = 50000
+			},
+			wantErr:     true,
+			errContains: "must be between",
+		},
+		{
+			name: "Compaction timeout exceeds interval",
+			modify: func(o *options.Options) {
+				o.EtcdCompactionInterval = 5 * time.Minute
+				o.EtcdCompactionTimeout = 10 * time.Minute
+			},
+			wantErr:     true,
+			errContains: "must be less than or equal to --etcd-compaction-interval",
+		},
+		{
 			name: "Watch notify interval too low",
 			modify: func(o *options.Options) {
 				o.EtcdWatchProgressNotifyInterval = 1 * time.Second
+			},
+			wantErr:     true,
+			errContains: "must be between",
+		},
+		{
+			name: "Watch notify interval too high",
+			modify: func(o *options.Options) {
+				o.EtcdWatchProgressNotifyInterval = 20 * time.Minute
+			},
+			wantErr:     true,
+			errContains: "must be between",
+		},
+		{
+			name: "Poll batch size too small",
+			modify: func(o *options.Options) {
+				o.EtcdPollBatchSize = 20
+			},
+			wantErr:     true,
+			errContains: "must be between",
+		},
+		{
+			name: "Poll batch size out of range",
+			modify: func(o *options.Options) {
+				o.EtcdPollBatchSize = 20000
 			},
 			wantErr:     true,
 			errContains: "must be between",

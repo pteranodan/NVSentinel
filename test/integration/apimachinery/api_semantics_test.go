@@ -33,17 +33,17 @@ import (
 
 func TestAPISemantics(t *testing.T) {
 	testCases := []struct {
-		name           string
-		storageBackend string
+		name        string
+		storageType string
 	}{
-		{name: "OnDisk", storageBackend: apistorage.StorageTypeETCD3},
-		{name: "InMemory", storageBackend: "memory"},
+		{name: "OnDisk", storageType: apistorage.StorageTypeETCD3},
+		{name: "InMemory", storageType: "memory"},
 	}
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			clientset, teardown := framework.SetupServer(t, tc.storageBackend)
+			clientset, teardown := framework.SetupServer(t, tc.storageType)
 			defer teardown()
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -72,6 +72,28 @@ func TestAPISemantics(t *testing.T) {
 				}
 				if created.ResourceVersion == "" {
 					t.Error("server failed to set ResourceVersion")
+				}
+			})
+
+			t.Run("Metadata Only Update", func(t *testing.T) {
+				original, err := clientset.DeviceV1alpha1().GPUs().Get(ctx, gpuName, metav1.GetOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				toUpdate := original.DeepCopy()
+				toUpdate.Annotations["updated"] = "true"
+
+				updated, err := clientset.DeviceV1alpha1().GPUs().Update(ctx, toUpdate, metav1.UpdateOptions{})
+				if err != nil {
+					t.Fatalf("failed to update metadata: %v", err)
+				}
+
+				if updated.Annotations["updated"] != "true" {
+					t.Error("metadata (annotation) not updated")
+				}
+				if updated.Generation != original.Generation {
+					t.Errorf("unexpected generation increase on metadata-only (annotation) update (got %d, want %d)", updated.Generation, original.Generation)
 				}
 			})
 
@@ -117,10 +139,10 @@ func TestAPISemantics(t *testing.T) {
 					t.Fatal(err)
 				}
 				if final.UID != original.UID {
-					t.Errorf("UID was changed! got %q, want %q", final.UID, original.UID)
+					t.Errorf("unexpected update: UID was updated. Got %q, want %q", final.UID, original.UID)
 				}
 				if final.CreationTimestamp != original.CreationTimestamp {
-					t.Errorf("CreationTimestamp %s changed, want %s", final.CreationTimestamp, original.CreationTimestamp)
+					t.Errorf("unexpected update: CreationTimestamp was updated. Got %q, want %q", final.CreationTimestamp, original.CreationTimestamp)
 				}
 			})
 
@@ -241,7 +263,7 @@ func TestAPISemantics(t *testing.T) {
 				}
 
 				patchedUUID := "spec-separation-patch-uuid"
-				patchData := []byte(`{"spec":{"uuid":"spec-separation-patch-uuid"},"status":{"conditions":[{"type":"Ready","status":"False"},{"type":"Degraded","status":"False"}]}}`)
+				patchData := []byte(`{"metadata":{"annotations":{"patch":"true"}},"spec":{"uuid":"spec-separation-patch-uuid"},"status":{"conditions":[{"type":"Ready","status":"False"},{"type":"Degraded","status":"False"}]}}`)
 
 				patched, err := clientset.DeviceV1alpha1().GPUs().Patch(ctx, obj.Name, types.MergePatchType, patchData, metav1.PatchOptions{})
 				if err != nil {
@@ -254,6 +276,10 @@ func TestAPISemantics(t *testing.T) {
 				if patched.Spec.UUID != patchedUUID {
 					t.Errorf("expected Patch to accept Spec change: got %s, want %s", patched.Spec.UUID, patchedUUID)
 				}
+				_, exists := patched.Annotations["patch"]
+				if !exists {
+					t.Errorf("expected Patch to accept Metadata change: got annotations %s, want 'patched:true'", patched.Annotations)
+				}
 			})
 
 			t.Run("Status Separation", func(t *testing.T) {
@@ -264,6 +290,7 @@ func TestAPISemantics(t *testing.T) {
 
 				updatedUUID := "status-separation-uuid"
 				obj.Spec.UUID = updatedUUID
+				obj.Annotations = map[string]string{"update-status": "false"}
 				obj.Status.Conditions = []metav1.Condition{{
 					Type:               "Ready",
 					Status:             "True",
@@ -280,22 +307,29 @@ func TestAPISemantics(t *testing.T) {
 				if len(updated.Status.Conditions) != len(obj.Status.Conditions) {
 					t.Errorf("expected UpdateStatus to accept Status change: got %d conditions, want %d", len(updated.Status.Conditions), len(obj.Status.Conditions))
 				}
+				_, exists := updated.Annotations["update-status"]
+				if exists {
+					t.Errorf("expected UpdateStatus to ignore Metadata changes: got annotations %s, want %s", updated.Annotations, obj.Annotations)
+				}
 				if updated.Spec.UUID == updatedUUID {
 					t.Errorf("expected UpdateStatus to ignore Spec change: got %s, want original Spec", updated.Spec.UUID)
 				}
 
-				patchData := []byte(`{"spec":{"uuid":"status-separation-patch-uuid"},"status":{"conditions":[{"type":"Ready","status":"False"},{"type":"Degraded","status":"False"},{"type":"FabricReady","status":"True"}]}}`)
+				patchData := []byte(`{"metadata":{"annotations":{"status-patch":"false"}},"spec":{"uuid":"status-separation-patch-uuid"},"status":{"conditions":[{"type":"Ready","status":"False"},{"type":"Degraded","status":"False"},{"type":"FabricReady","status":"True"}]}}`)
 
 				patched, err := clientset.DeviceV1alpha1().GPUs().Patch(ctx, obj.Name, types.MergePatchType, patchData, metav1.PatchOptions{}, "status")
 				if err != nil {
 					t.Errorf("failed to patch GPU status %s: %v", obj.Name, err)
 				}
-
 				if len(patched.Status.Conditions) != 3 {
-					t.Errorf("expected Patch to accept Status change: got %d conditions, want 3", len(patched.Status.Conditions))
+					t.Errorf("expected Status Patch to accept Status change: got %d conditions, want 3", len(patched.Status.Conditions))
+				}
+				_, exists = patched.Annotations["status-patch"]
+				if exists {
+					t.Errorf("expected Status Patch to ignore Metadata changes: got annotations %s, want %s", patched.Annotations, obj.Annotations)
 				}
 				if patched.Spec.UUID != updated.Spec.UUID {
-					t.Errorf("expected Patch to ignore Spec change: got %s, want %s", patched.Spec.UUID, updated.Spec.UUID)
+					t.Errorf("expected Status Patch to ignore Spec change: got %s, want %s", patched.Spec.UUID, updated.Spec.UUID)
 				}
 			})
 		})

@@ -72,8 +72,7 @@ kube::codegen::gen_client \
   --output-dir "${REPO_ROOT}/pkg/client-go" \
   --output-pkg "github.com/nvidia/nvsentinel/pkg/client-go" \
   --boilerplate "hack/boilerplate.go.txt" \
-  --clientset-name "client" \
-  --versioned-name "versioned" \
+  --clientset-name "deviceapi" \
   --with-watch \
   --listers-name "listers" \
   --informers-name "informers" \

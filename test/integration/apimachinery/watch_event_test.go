@@ -23,7 +23,7 @@ import (
 	"time"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
+	"github.com/nvidia/nvsentinel/pkg/client-go/clientset"
 	"github.com/nvidia/nvsentinel/test/integration/framework"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,20 +33,20 @@ import (
 
 func TestWatchEvent(t *testing.T) {
 	testCases := []struct {
-		name           string
-		storageBackend string
+		name        string
+		storageType string
 	}{
-		{name: "OnDisk", storageBackend: apistorage.StorageTypeETCD3},
-		{name: "InMemory", storageBackend: "memory"},
+		{name: "OnDisk", storageType: apistorage.StorageTypeETCD3},
+		{name: "InMemory", storageType: "memory"},
 	}
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			clientset, teardown := framework.SetupServer(t, tc.storageBackend)
+			clientset, teardown := framework.SetupServer(t, tc.storageType)
 			defer teardown()
 
-			timeout := 15 * time.Second
+			timeout := 30 * time.Second
 
 			newWatcher := func(ctx context.Context, gpu *devicev1alpha1.GPU, resourceVersion string) (watch.Interface, error) {
 				return clientset.DeviceV1alpha1().GPUs().Watch(ctx, metav1.ListOptions{
@@ -84,7 +84,7 @@ func TestWatchEvent(t *testing.T) {
 					}
 					defer watcher.Stop()
 
-					generateAndWatchEvent(ctx, t, tc, clientset, gpu, watcher, tc.storageBackend)
+					generateAndWatchEvent(ctx, t, tc, clientset, gpu, watcher, tc.storageType)
 				})
 			}
 		})
@@ -92,15 +92,15 @@ func TestWatchEvent(t *testing.T) {
 }
 
 func generateAndWatchEvent(ctx context.Context, t *testing.T, tc struct {
-	name           string
-	storageBackend string
-}, cs versioned.Interface, gpu *devicev1alpha1.GPU, watcher watch.Interface, backend string) {
-	timeout := 10 * time.Second
+	name        string
+	storageType string
+}, cs clientset.Interface, gpu *devicev1alpha1.GPU, watcher watch.Interface, backend string) {
+	timeout := 30 * time.Second
 	gpuName := gpu.Name
 
 	_, ok := waitForEvent(watcher, watch.Added, gpu, timeout, backend, t)
 	if !ok {
-		if tc.storageBackend == "memory" {
+		if tc.storageType == "memory" {
 			framework.SkipWithWarning(t, fmt.Sprintf("failed to observe ADDED event for GPU %s", gpuName))
 		}
 		t.Fatalf("failed to observe ADDED event for GPU %s", gpuName)
@@ -141,6 +141,10 @@ func waitForEvent(w watch.Interface, expectType watch.EventType, expectObject *d
 
 			if actual.Type == watch.Error {
 				return watch.Event{}, false
+			}
+
+			if actual.Type == watch.Bookmark {
+				continue
 			}
 
 			actualObj, ok := actual.Object.(*devicev1alpha1.GPU)

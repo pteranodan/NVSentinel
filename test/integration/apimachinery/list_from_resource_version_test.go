@@ -31,17 +31,17 @@ import (
 
 func TestListFromResourceVersion(t *testing.T) {
 	testCases := []struct {
-		name           string
-		storageBackend string
+		name        string
+		storageType string
 	}{
-		{name: "OnDisk", storageBackend: apistorage.StorageTypeETCD3},
-		{name: "InMemory", storageBackend: "memory"},
+		{name: "OnDisk", storageType: apistorage.StorageTypeETCD3},
+		{name: "InMemory", storageType: "memory"},
 	}
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			clientset, teardown := framework.SetupServer(t, tc.storageBackend)
+			clientset, teardown := framework.SetupServer(t, tc.storageType)
 			defer teardown()
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -119,7 +119,7 @@ func TestListFromResourceVersion(t *testing.T) {
 					t.Errorf("failed to return base object %q, got nil", gpu1.Name)
 				}
 				if foundGpu2 {
-					if tc.storageBackend == "memory" {
+					if tc.storageType == "memory" {
 						framework.SkipWithWarning(t, fmt.Sprintf("failed to isolate snapshot, got future object %q", gpu2.Name))
 					}
 					t.Errorf("failed to isolate snapshot, got future object %q", gpu2.Name)

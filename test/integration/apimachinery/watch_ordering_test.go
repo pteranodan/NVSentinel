@@ -32,17 +32,17 @@ import (
 
 func TestWatchOrdering(t *testing.T) {
 	testCases := []struct {
-		name           string
-		storageBackend string
+		name        string
+		storageType string
 	}{
-		{name: "OnDisk", storageBackend: apistorage.StorageTypeETCD3},
-		{name: "InMemory", storageBackend: "memory"},
+		{name: "OnDisk", storageType: apistorage.StorageTypeETCD3},
+		{name: "InMemory", storageType: "memory"},
 	}
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			clientset, teardown := framework.SetupServer(t, tc.storageBackend)
+			clientset, teardown := framework.SetupServer(t, tc.storageType)
 			defer teardown()
 
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -50,7 +50,7 @@ func TestWatchOrdering(t *testing.T) {
 
 			list, err := clientset.DeviceV1alpha1().GPUs().List(ctx, metav1.ListOptions{})
 			if err != nil {
-				if tc.storageBackend == "memory" {
+				if tc.storageType == "memory" {
 					framework.SkipWithWarning(t, fmt.Sprintf("failed to list GPUs: %v", err))
 				}
 				t.Fatalf("failed to list GPUs: %v", err)

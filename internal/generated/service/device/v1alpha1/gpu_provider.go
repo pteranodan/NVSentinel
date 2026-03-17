@@ -56,6 +56,9 @@ func (p *gpuServiceProvider) Install(svr *grpc.Server, cfg storagebackend.Config
 		return nil, fmt.Errorf("failed to add %q to scheme: %w", p.groupVersion.String(), err)
 	}
 
+	internalGV := schema.GroupVersion{Group: "device.nvidia.com", Version: runtime.APIVersionInternal}
+    scheme.AddKnownTypes(internalGV, &devicev1alpha1.GPU{}, &devicev1alpha1.GPUList{})
+
 	codecs := serializer.NewCodecFactory(scheme)
 	info, ok := runtime.SerializerInfoForMediaType(codecs.SupportedMediaTypes(), runtime.ContentTypeJSON)
 	if !ok {
