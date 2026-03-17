@@ -35,7 +35,6 @@ type GPUSpec struct {
 // +k8s:deepcopy-gen=true
 type GPUStatus struct {
 	// Conditions is an array of current gpu conditions.
-	//
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
@@ -49,14 +48,15 @@ type GPUStatus struct {
 //
 // +genclient
 // +genclient:nonNamespaced
-// +genclient:onlyVerbs=get,list,watch,create,update,updateStatus,delete
 // +k8s:deepcopy-gen=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type GPU struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   GPUSpec   `json:"spec,omitempty"`
+	// +optional
+	Spec GPUSpec `json:"spec,omitempty"`
+	// +optional
 	Status GPUStatus `json:"status,omitempty"`
 }
 
@@ -66,6 +66,7 @@ type GPU struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type GPUList struct {
 	metav1.TypeMeta `json:",inline"`
+	// +optional
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []GPU `json:"items"`
 }

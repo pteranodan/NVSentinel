@@ -16,98 +16,102 @@ package apiserver
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/nvidia/nvsentinel/pkg/controlplane/apiserver/api"
 	"github.com/nvidia/nvsentinel/pkg/controlplane/apiserver/metrics"
-	"github.com/nvidia/nvsentinel/pkg/storage/storagebackend"
 	netutils "github.com/nvidia/nvsentinel/pkg/util/net"
 	"github.com/nvidia/nvsentinel/pkg/version"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.etcd.io/etcd/client/pkg/v3/transport"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/admin"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/storage/storagebackend"
 	"k8s.io/klog/v2"
 )
 
-type DeviceAPIServer struct {
+const storageTypeMemory = "memory"
+
+// Server is a struct that contains a control plane device apiserver instance
+// that can be run to start serving the APIs.
+type Server struct {
 	BindAddress          string
 	HealthAddress        string
 	ServiceMonitorPeriod time.Duration
 	MetricsAddress       string
 	ShutdownGracePeriod  time.Duration
+	PprofAddress         string
 
 	DeviceServer     *grpc.Server
 	HealthServer     *health.Server
 	AdminServer      *grpc.Server
 	AdminCleanup     func()
 	Metrics          *metrics.ServerMetrics
-	Storage          *storagebackend.Storage
+	StorageConfig    storagebackend.Config
 	ServiceProviders []api.ServiceProvider
-	mu               sync.RWMutex
-	// services is guarded by mu
-	services []api.Service
+	services         []api.Service
 
 	wg sync.WaitGroup
 }
 
-func (c *CompletedConfig) New(s *storagebackend.Storage) (*DeviceAPIServer, error) {
-	klog.V(4).InfoS("Creating new Device Server",
-		"bind", c.BindAddress,
-		"serverOptionsCount", len(c.ServerOptions))
+// New returns a new instance of Server from the given config.
+func (c *CompletedConfig) New() (*Server, error) {
+	klog.V(4).InfoS("Creating Device API Server", "bind", c.BindAddress, "serverOptionsCount", len(c.ServerOptions))
 
 	deviceSrv := grpc.NewServer(c.ServerOptions...)
 
 	adminSrv := grpc.NewServer()
 
-	return &DeviceAPIServer{
+	return &Server{
 		BindAddress:          c.BindAddress,
 		HealthAddress:        c.HealthAddress,
 		ServiceMonitorPeriod: c.ServiceMonitorPeriod,
 		MetricsAddress:       c.MetricsAddress,
 		ShutdownGracePeriod:  c.ShutdownGracePeriod,
+		PprofAddress:         c.PprofAddress,
 		DeviceServer:         deviceSrv,
 		AdminServer:          adminSrv,
 		Metrics:              c.ServerMetrics,
-		Storage:              s,
+		StorageConfig:        c.Storage,
 		ServiceProviders:     c.ServiceProviders,
 	}, nil
 }
 
-type preparedDeviceAPIServer struct {
-	*DeviceAPIServer
+type preparedServer struct {
+	// TODO: add comment
+	*Server
 }
 
-func (s *DeviceAPIServer) PrepareRun(ctx context.Context) (preparedDeviceAPIServer, error) {
+// TODO: add docs
+func (s *Server) PrepareRun() (preparedServer, error) {
 	if s.HealthAddress != "" {
 		s.HealthServer = health.NewServer()
 		healthpb.RegisterHealthServer(s.AdminServer, s.HealthServer)
-		// Also register on DeviceServer so sidecar providers connecting via
-		// unix socket can perform health checks without a separate connection.
 		healthpb.RegisterHealthServer(s.DeviceServer, s.HealthServer)
 		s.HealthServer.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
 	}
 
-	// Enable gRPC reflection on both servers. This is intentional:
-	// - DeviceServer: allows grpcurl/grpc_cli debugging
-	// - AdminServer: required for channelz and admin tooling
-	// To restrict in production, use NetworkPolicy on the admin port.
 	reflection.Register(s.DeviceServer)
 	reflection.Register(s.AdminServer)
 
 	adminCleanup, err := admin.Register(s.AdminServer)
 	if err != nil {
-		return preparedDeviceAPIServer{}, fmt.Errorf("failed to register gRPC admin services: %w", err)
+		return preparedServer{}, fmt.Errorf("failed to register gRPC admin services: %w", err)
 	}
 	s.AdminCleanup = adminCleanup
 
@@ -116,69 +120,51 @@ func (s *DeviceAPIServer) PrepareRun(ctx context.Context) (preparedDeviceAPIServ
 		s.Metrics.InitializeMetrics(s.AdminServer)
 	}
 
-	klog.FromContext(ctx).V(3).Info("gRPC services registered",
+	klog.V(3).InfoS("gRPC services registered",
 		"health", s.HealthAddress != "",
 		"reflection", true,
 		"admin/channelz", true,
 		"metrics", s.Metrics != nil)
 
-	return preparedDeviceAPIServer{s}, nil
+	return preparedServer{s}, nil
 }
 
-func (s *preparedDeviceAPIServer) Run(ctx context.Context) error {
+// TODO: add docs
+func (s *preparedServer) Run(ctx context.Context) error {
 	return s.run(ctx)
 }
 
-//nolint:cyclop
-func (s *DeviceAPIServer) run(ctx context.Context) error {
+func (s *Server) run(ctx context.Context) error {
 	logger := klog.FromContext(ctx)
-	socketPath := strings.TrimPrefix(s.BindAddress, "unix://")
+
+	if err := s.waitForStorageBackend(ctx); err != nil {
+		return err
+	}
+
+	defer func() {
+		for _, svc := range s.services {
+			svc.Cleanup()
+		}
+	}()
+
+	if err := s.installApiServices(ctx); err != nil {
+		return err
+	}
 
 	if s.HealthServer != nil {
 		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-
-			s.serveHealth(ctx)
-		}()
-
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-
-			defer func() {
-				if r := recover(); r != nil {
-					klog.ErrorS(nil, "Health monitor panicked, setting NOT_SERVING", "panic", r)
-
-					if s.HealthServer != nil {
-						s.HealthServer.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
-					}
-				}
-			}()
-
-			s.monitorServiceHealth(ctx)
-		}()
+		go func() { defer s.wg.Done(); s.serveHealth(ctx) }()
 	}
 
 	if s.MetricsAddress != "" {
 		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-
-			s.serveMetrics(ctx)
-		}()
+		go func() { defer s.wg.Done(); s.serveMetrics(ctx) }()
 	}
 
-	if err := s.waitForStorage(ctx); err != nil {
-		return fmt.Errorf("failed to wait for storage backend readiness: %w", err)
+	if s.PprofAddress != "" {
+		s.wg.Add(1)
+		go func() { defer s.wg.Done(); s.servePprof(ctx) }()
 	}
-
-	if err := s.installAPIServices(ctx); err != nil {
-		return err
-	}
-
-	// Sync serving status with backend and service readiness immediately.
-	s.checkServiceHealth()
 
 	s.wg.Add(1)
 	go func() {
@@ -186,9 +172,13 @@ func (s *DeviceAPIServer) run(ctx context.Context) error {
 
 		<-ctx.Done()
 
-		logger.V(2).Info("Received termination signal, starting graceful shutdown")
+		logger.V(2).Info("Received termination signal, starting graceful shutdown...")
 
 		if s.HealthServer != nil {
+			for _, svc := range s.services {
+				s.HealthServer.SetServingStatus(svc.Name(), healthpb.HealthCheckResponse_NOT_SERVING)
+			}
+
 			s.HealthServer.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
 		}
 
@@ -204,7 +194,7 @@ func (s *DeviceAPIServer) run(ctx context.Context) error {
 			select {
 			case <-adminDone:
 			case <-time.After(s.ShutdownGracePeriod):
-				logger.V(2).Info("AdminServer graceful stop timed out, forcing stop")
+				logger.V(2).Info("Admin server graceful stop timed out, forcing stop")
 				s.AdminServer.Stop()
 			}
 		}
@@ -214,6 +204,7 @@ func (s *DeviceAPIServer) run(ctx context.Context) error {
 		}
 	}()
 
+	socketPath := strings.TrimPrefix(s.BindAddress, "unix://")
 	lis, cleanup, err := netutils.CreateUDSListener(ctx, socketPath, 0666)
 	if err != nil {
 		return err
@@ -232,11 +223,127 @@ func (s *DeviceAPIServer) run(ctx context.Context) error {
 	return serveErr
 }
 
-func (s *DeviceAPIServer) serveHealth(ctx context.Context) {
+func (s *Server) waitForStorageBackend(ctx context.Context) error {
+	logger := klog.FromContext(ctx)
+
+	if s.StorageConfig.Type == storageTypeMemory {
+		logger.V(2).Info("Storage backend is in-memory; skipping backend readiness checks")
+		return nil
+	}
+
+	timeout := s.StorageConfig.ReadycheckTimeout
+
+	logger.V(4).Info("Waiting for storage backend readiness", "timeout", timeout)
+
+	cli, err := s.etcdClient()
+	if err != nil {
+		return fmt.Errorf("failed to create etcd client: %w", err)
+	}
+	defer cli.Close()
+
+	err = wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			// Avoid blocking the entire polling loop if one request hangs.
+			rpcCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+			defer cancel()
+
+			_, err := cli.Status(rpcCtx, s.StorageConfig.Transport.ServerList[0])
+			if err == nil {
+				return true, nil
+			}
+
+			// If Status fails (e.g., missing dbstat extension), try a Get
+			_, err = cli.Get(rpcCtx, "/", clientv3.WithLimit(1))
+			if err == nil {
+				return true, nil
+			}
+
+			logger.V(4).Info("Storage backend not ready yet", "err", err)
+			return false, nil // Keep polling
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("timed out waiting %v for storage backend readiness: %w", timeout, err)
+	}
+
+	return nil
+}
+
+func (s *Server) etcdClient() (*clientv3.Client, error) {
+	var tlsConfig *tls.Config
+	var err error
+
+	if s.StorageConfig.Transport.CertFile != "" {
+		tlsInfo := &transport.TLSInfo{
+			CertFile:           s.StorageConfig.Transport.CertFile,
+			KeyFile:            s.StorageConfig.Transport.KeyFile,
+			TrustedCAFile:      s.StorageConfig.Transport.TrustedCAFile,
+			InsecureSkipVerify: true,
+		}
+		tlsConfig, err = tlsInfo.ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get etcd TLS config: %w", err)
+		}
+	}
+
+	// Use a silent logger for the etcd client to suppress noisy dbstat warnings
+	zapConfig := zap.NewProductionConfig()
+	zapConfig.Level = zap.NewAtomicLevelAt(zap.ErrorLevel)
+	etcdLogger, err := zapConfig.Build()
+	if err != nil {
+		etcdLogger = zap.NewNop()
+	}
+
+	return clientv3.New(clientv3.Config{
+		Endpoints:   s.StorageConfig.Transport.ServerList,
+		DialTimeout: 2 * time.Second,
+		TLS:         tlsConfig,
+		Logger:      etcdLogger,
+		DialOptions: []grpc.DialOption{
+			grpc.WithBlock(),
+		},
+	})
+}
+
+func (s *Server) installApiServices(ctx context.Context) error {
+	logger := klog.FromContext(ctx)
+
+	for _, sp := range s.ServiceProviders {
+		svc, err := sp.Install(s.DeviceServer, s.StorageConfig)
+		if err != nil {
+			return fmt.Errorf("failed to install API service: %w", err)
+		}
+
+		name := svc.Name()
+
+		if !svc.IsReady() {
+			return fmt.Errorf("API service %q installed but failed readiness check", name)
+		}
+
+		s.services = append(s.services, svc)
+
+		if s.HealthServer != nil {
+			s.HealthServer.SetServingStatus(name, healthpb.HealthCheckResponse_SERVING)
+		}
+
+		if s.Metrics != nil {
+			s.Metrics.ServiceHealthStatus.WithLabelValues(name).Set(1.0)
+		}
+	}
+
+	if s.HealthServer != nil {
+		s.HealthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	}
+
+	logger.V(2).Info("API services installed and ready", "count", len(s.services))
+	return nil
+}
+
+func (s *Server) serveHealth(ctx context.Context) {
 	logger := klog.FromContext(ctx)
 
 	lc := net.ListenConfig{}
-	lis, err := lc.Listen(ctx, "tcp", s.HealthAddress) //nolint:wsl_v5
+	lis, err := lc.Listen(ctx, "tcp", s.HealthAddress)
 	if err != nil {
 		logger.Error(err, "Failed to listen on health port", "address", s.HealthAddress)
 		return
@@ -260,7 +367,7 @@ func (s *DeviceAPIServer) serveHealth(ctx context.Context) {
 	}
 }
 
-func (s *DeviceAPIServer) serveMetrics(ctx context.Context) {
+func (s *Server) serveMetrics(ctx context.Context) {
 	logger := klog.FromContext(ctx)
 
 	gatherers := prometheus.Gatherers{
@@ -279,7 +386,7 @@ func (s *DeviceAPIServer) serveMetrics(ctx context.Context) {
 	}
 
 	lc := net.ListenConfig{}
-	lis, err := lc.Listen(ctx, "tcp", s.MetricsAddress) //nolint:wsl_v5
+	lis, err := lc.Listen(ctx, "tcp", s.MetricsAddress)
 	if err != nil {
 		logger.Error(err, "Failed to listen on metrics port", "address", s.MetricsAddress)
 		return
@@ -307,129 +414,47 @@ func (s *DeviceAPIServer) serveMetrics(ctx context.Context) {
 	}
 }
 
-func (s *DeviceAPIServer) waitForStorage(ctx context.Context) error {
-	if s.Storage == nil {
-		return fmt.Errorf("storage backend is not initialized")
-	}
-
-	if s.Storage.IsReady() {
-		return nil
-	}
-
+func (s *Server) servePprof(ctx context.Context) {
 	logger := klog.FromContext(ctx)
-	logger.Info("Waiting for storage backend to become ready")
-	startTime := time.Now()
 
-	err := wait.PollUntilContextTimeout(ctx, 200*time.Millisecond, 60*time.Second, true,
-		func(ctx context.Context) (bool, error) {
-			if s.Storage.IsReady() {
-				logger.V(2).Info("Storage backend is ready",
-					"duration", time.Since(startTime).Round(time.Second))
-				return true, nil
-			}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-			return false, nil
-		},
-	)
+	pprofSrv := &http.Server{
+		Addr:              s.PprofAddress,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	lc := net.ListenConfig{}
+	lis, err := lc.Listen(ctx, "tcp", s.PprofAddress)
 	if err != nil {
-		return fmt.Errorf("timed out waiting for storage backend readiness: %w", err)
-	}
-
-	return nil
-}
-
-func (s *DeviceAPIServer) installAPIServices(ctx context.Context) error {
-	logger := klog.FromContext(ctx)
-
-	var services []api.Service
-	for i, sp := range s.ServiceProviders {
-		service, err := sp.Install(s.DeviceServer, s.Storage.StorageConfig)
-		if err != nil {
-			return fmt.Errorf("failed to install API service (index %d): %w", i, err)
-		}
-
-		services = append(services, service)
-	}
-
-	s.mu.Lock()
-	s.services = append(s.services, services...)
-	s.mu.Unlock()
-
-	logger.V(3).Info("API services installed", "count", len(s.services))
-
-	return nil
-}
-
-func (s *DeviceAPIServer) checkServiceHealth() {
-	if s.HealthServer == nil {
+		logger.Error(err, "Failed to listen on pprof port", "address", s.PprofAddress)
 		return
 	}
 
-	storageReady := s.Storage.IsReady()
-	globalReady := storageReady
+	go func() {
+		<-ctx.Done()
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+		logger.V(2).Info("Shutting down pprof server", "address", s.PprofAddress)
 
-	for _, svc := range s.services {
-		name := svc.Name()
-		svcReady := storageReady && svc.IsReady()
-		status := healthpb.HealthCheckResponse_SERVING
-		metricVal := 1.0
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), s.ShutdownGracePeriod)
+		defer cancel()
 
-		if !svcReady {
-			status = healthpb.HealthCheckResponse_NOT_SERVING
-			metricVal = 0.0
-			globalReady = false
-
-			klog.V(2).InfoS("Service is not ready",
-				"service", name,
-				"serviceReady", svc.IsReady(),
-				"storageReady", storageReady)
+		if err := pprofSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Error(err, "Pprof server graceful shutdown failed; forcing close", "address", s.PprofAddress)
+			pprofSrv.Close()
 		}
+	}()
 
-		s.HealthServer.SetServingStatus(name, status)
+	logger.V(2).Info("Starting pprof server", "address", s.PprofAddress)
 
-		if s.Metrics != nil {
-			s.Metrics.ServiceHealthStatus.WithLabelValues(name).Set(metricVal)
-		}
-	}
-
-	globalStatus := healthpb.HealthCheckResponse_SERVING
-	globalMetricVal := 1.0
-
-	if !globalReady {
-		globalStatus = healthpb.HealthCheckResponse_NOT_SERVING
-		globalMetricVal = 0.0
-	}
-
-	s.HealthServer.SetServingStatus("", globalStatus)
-
-	if s.Metrics != nil {
-		s.Metrics.ServiceHealthStatus.WithLabelValues("device-apiserver").Set(globalMetricVal)
-	}
-}
-
-func (s *DeviceAPIServer) monitorServiceHealth(ctx context.Context) {
-	if s.ServiceMonitorPeriod <= 0 {
-		klog.InfoS("Service health monitoring disabled, performing one-time check")
-		s.checkServiceHealth()
-		return
-	}
-
-	klog.InfoS("Starting service health monitor", "period", s.ServiceMonitorPeriod)
-
-	ticker := time.NewTicker(s.ServiceMonitorPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			klog.InfoS("Stopping service health monitor")
-			return
-		case <-ticker.C:
-			klog.V(4).InfoS("Triggering periodic service health check")
-			s.checkServiceHealth()
-		}
+	serveErr := pprofSrv.Serve(lis)
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) && !errors.Is(serveErr, net.ErrClosed) {
+		logger.Error(serveErr, "Pprof server stopped unexpectedly", "address", s.PprofAddress)
 	}
 }

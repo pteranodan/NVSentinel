@@ -21,21 +21,22 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	nvvalidation "github.com/nvidia/nvsentinel/pkg/util/validation"
 	"github.com/nvidia/nvsentinel/pkg/version"
 )
 
 const (
-	// NvidiaDeviceAPITargetEnvVar is the environment variable that overrides the gRPC target.
-	NvidiaDeviceAPITargetEnvVar = "NVIDIA_DEVICE_API_TARGET"
+	// DeviceAPISocketEnvVar is the environment variable that overrides the gRPC target.
+	DeviceAPISocketEnvVar = "NVIDIA_DEVICE_API_SOCK"
 
-	// DefaultNvidiaDeviceAPISocket is the default Unix domain socket path.
-	DefaultNvidiaDeviceAPISocket = "unix:///var/run/nvidia-device-api/device-api.sock"
+	// DefaultDeviceAPISocketPath is the default Unix domain socket path.
+	DefaultDeviceAPISocketPath = "unix:///var/run/nvidia-device-api/device-api.sock"
 
 	// DefaultKeepAliveTime is the default frequency of keepalive pings.
-	DefaultKeepAliveTime = 5 * time.Minute
+	DefaultKeepAliveTime = 50 * time.Second
 
 	// DefaultKeepAliveTimeout is the default time to wait for a keepalive pong.
-	DefaultKeepAliveTimeout = 20 * time.Second
+	DefaultKeepAliveTimeout = 10 * time.Second
 )
 
 // Config holds configuration for the Device API client.
@@ -49,14 +50,48 @@ type Config struct {
 	logger logr.Logger
 }
 
+// GetConfig creates a default configuration for talking to a Device apiserver.
+//
+// gRPC target precedence:
+//
+// 1. NVIDIA_DEVICE_API_SOCK environment variable
+//
+// 2. The default socket path (unix:///var/run/nvidia-device-api/device-api.sock).
+func GetConfig() (*Config, error) {
+	socketPath := os.Getenv(DeviceAPISocketEnvVar)
+	if len(socketPath) == 0 {
+		socketPath = DefaultDeviceAPISocketPath
+	}
+
+	config := &Config{Target: socketPath}
+	config.Default()
+
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+	return config, nil
+}
+
+// GetConfigOrDie creates a default configuration for talking to a Device apiserver.
+//
+// Will log an error and exit if there is an error creating the configuration.
+func GetConfigOrDie() *Config {
+	config, err := GetConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize device api config: %v\n", err)
+		os.Exit(1)
+	}
+	return config
+}
+
 // Default populates unset fields in the Config with default values.
 func (c *Config) Default() {
 	if c.Target == "" {
-		c.Target = os.Getenv(NvidiaDeviceAPITargetEnvVar)
+		c.Target = os.Getenv(DeviceAPISocketEnvVar)
 	}
 
 	if c.Target == "" {
-		c.Target = DefaultNvidiaDeviceAPISocket
+		c.Target = DefaultDeviceAPISocketPath
 	}
 
 	if c.UserAgent == "" {
@@ -71,17 +106,15 @@ func (c *Config) Default() {
 // Validate checks if the Config is valid and returns an error if not.
 func (c *Config) Validate() error {
 	if c.Target == "" {
-		return fmt.Errorf("gRPC target address is required; verify %s is not empty", NvidiaDeviceAPITargetEnvVar)
-	}
-
-	// Validate target scheme
-	if !strings.HasPrefix(c.Target, "unix://") && !strings.HasPrefix(c.Target, "unix:") &&
-		!strings.HasPrefix(c.Target, "dns:") && !strings.HasPrefix(c.Target, "passthrough:") {
-		return fmt.Errorf("gRPC target %q must use unix://, dns:, or passthrough: scheme", c.Target)
+		return fmt.Errorf("target: required")
+	} else {
+		if validationErrors := nvvalidation.IsUnixSocketURI(c.Target); len(validationErrors) > 0 {
+			return fmt.Errorf("target %q: %s", c.Target, strings.Join(validationErrors, ", "))
+		}
 	}
 
 	if c.UserAgent == "" {
-		return fmt.Errorf("user-agent cannot be empty")
+		return fmt.Errorf("user-agent: required")
 	}
 
 	return nil

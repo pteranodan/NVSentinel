@@ -82,14 +82,17 @@ func (g *genClientset) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 	allGroups := clientgentypes.ToGroupVersionInfo(g.groups, g.groupGoNames)
 	m := map[string]interface{}{
 		"allGroups":           allGroups,
+		"context":             c.Universe.Type(types.Name{Package: "context", Name: "Context"}),
 		"fmtErrorf":           c.Universe.Type(types.Name{Package: "fmt", Name: "Errorf"}),
 		"Config":              c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "Config"}),
 		"ClientConnFor":       c.Universe.Function(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "ClientConnFor"}),
 		"ClientConnInterface": c.Universe.Type(types.Name{Package: "google.golang.org/grpc", Name: "ClientConnInterface"}),
+		"ioCloser":            c.Universe.Type(types.Name{Package: "io", Name: "Closer"}),
 	}
 
 	sw.Do(clientsetInterface, m)
 	sw.Do(clientsetTemplate, m)
+	sw.Do(clientsetCloseTemplate, m)
 	for _, g := range allGroups {
 		sw.Do(clientsetInterfaceImplTemplate, g)
 	}
@@ -105,6 +108,7 @@ var clientsetInterface = `
 type Interface interface {
 	$range .allGroups$$.GroupGoName$$.Version$() $.PackageAlias$.$.GroupGoName$$.Version$Interface
 	$end$
+	Close() error
 }
 `
 var clientsetTemplate = `
@@ -112,6 +116,16 @@ var clientsetTemplate = `
 type Clientset struct {
 	$range .allGroups$$.LowerCaseGroupGoName$$.Version$ *$.PackageAlias$.$.GroupGoName$$.Version$Client
 	$end$
+	conn $.ClientConnInterface|raw$
+}
+`
+
+var clientsetCloseTemplate = `
+func (c *Clientset) Close() error {
+	if closer, ok := c.conn.($.ioCloser|raw$); ok {
+		return closer.Close()
+	}
+	return nil
 }
 `
 
@@ -158,6 +172,8 @@ func NewForConfigAndClient(c *$.Config|raw$, conn $.ClientConnInterface|raw$) (*
 	configShallowCopy := *c // Shallow copy to avoid mutation
 	
 	var cs Clientset
+	cs.conn = conn
+
 	var err error
 $range .allGroups$    cs.$.LowerCaseGroupGoName$$.Version$, err = $.PackageAlias$.NewForConfigAndClient(&configShallowCopy, conn)
 	if err != nil {

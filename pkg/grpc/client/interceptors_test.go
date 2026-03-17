@@ -50,6 +50,8 @@ func TestLatencyUnaryInterceptor(t *testing.T) {
 
 			interceptor := NewLatencyUnaryInterceptor(logger)
 
+			cc := &grpc.ClientConn{}
+
 			invoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
 				if !tt.log {
 					time.Sleep(1 * time.Millisecond)
@@ -57,7 +59,7 @@ func TestLatencyUnaryInterceptor(t *testing.T) {
 				return tt.invokerErr
 			}
 
-			err := interceptor(context.Background(), tt.method, nil, nil, nil, invoker)
+			err := interceptor(context.Background(), tt.method, nil, nil, cc, invoker)
 			if !errors.Is(err, tt.invokerErr) {
 				t.Fatalf("Returned error mismatch. Got %v, want %v", err, tt.invokerErr)
 			}
@@ -85,6 +87,7 @@ func TestLatencyStreamInterceptor(t *testing.T) {
 			}
 
 			interceptor := NewLatencyStreamInterceptor(logger)
+			cc := &grpc.ClientConn{}
 			desc := &grpc.StreamDesc{}
 
 			streamer := func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
@@ -94,7 +97,7 @@ func TestLatencyStreamInterceptor(t *testing.T) {
 				return nil, tt.streamerErr
 			}
 
-			_, err := interceptor(context.Background(), desc, nil, tt.method, streamer)
+			_, err := interceptor(context.Background(), desc, cc, tt.method, streamer)
 			if !errors.Is(err, tt.streamerErr) {
 				t.Fatalf("Returned error mismatch. Got %v, want %v", err, tt.streamerErr)
 			}

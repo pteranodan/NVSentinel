@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: device-apiserver-haproxy-svc
+spec:
+  selector:
+    app: device-apiserver-haproxy
+  ports:
+  - protocol: TCP
+    port: 8081
+    targetPort: 8081
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: device-apiserver-haproxy-cfg
+data:
+  haproxy.cfg: |
+    global
+        nbthread 1
+        maxconn 4096
+        log /dev/log local0
+
+    defaults
+        mode tcp
+        log global
+        option tcplog
+
+        timeout connect 5s
+        timeout client 20s
+        timeout server 20s
+
+    frontend grpc_bridge
+        bind :8081
+        default_backend device_api_uds
+
+    backend device_api_uds
+        server s1 unix@/var/run/nvidia-device-api/device-api.sock
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: device-apiserver-haproxy
+  labels:
+    app: device-apiserver-haproxy
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: device-api-control-plane
+  containers:
+  - name: haproxy
+    image: haproxy:alpine
+    securityContext:
+      runAsUser: 65532
+      runAsGroup: 5000
+      allowPrivilegeEscalation: false
+      capabilities:
+        add:
+          - NET_BIND_SERVICE
+        drop:
+          - ALL
+    resources:
+      requests:
+        cpu: "1"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+    volumeMounts:
+    - name: haproxy-cfg
+      mountPath: /usr/local/etc/haproxy/haproxy.cfg
+      subPath: haproxy.cfg
+    - name: run-device-api
+      mountPath: /var/run/nvidia-device-api
+  volumes:
+  - name: haproxy-cfg
+    configMap:
+      name: device-apiserver-haproxy-cfg
+  - name: run-device-api
+    hostPath:
+      path: /var/run/nvidia-device-api
+      type: Directory

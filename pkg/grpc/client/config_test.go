@@ -40,13 +40,13 @@ func TestConfig_Default_TargetPrecedence(t *testing.T) {
 			name:       "Default used when both are empty",
 			argTarget:  "",
 			envTarget:  "",
-			wantTarget: DefaultNvidiaDeviceAPISocket,
+			wantTarget: DefaultDeviceAPISocketPath,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv(NvidiaDeviceAPITargetEnvVar, tt.envTarget)
+			t.Setenv(DeviceAPISocketEnvVar, tt.envTarget)
 
 			cfg := &Config{Target: tt.argTarget}
 			cfg.Default()
@@ -86,7 +86,7 @@ func TestConfig_Validate(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "Valid unix:/// config",
+			name: "Valid unix target",
 			cfg: Config{
 				Target:    "unix:///var/run/test.sock",
 				UserAgent: "test/1.0",
@@ -94,48 +94,41 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Valid unix: config",
+			name: "Rejects unix target missing double slash",
 			cfg: Config{
 				Target:    "unix:/var/run/test.sock",
 				UserAgent: "test/1.0",
 			},
-			wantErr: false,
+			wantErr: true,
 		},
 		{
-			name: "Valid dns: config",
+			name: "Rejects relative path",
+			cfg: Config{
+				Target:    "unix://relative/path.sock",
+				UserAgent: "test/1.0",
+			},
+			wantErr: true,
+		},
+		{
+			name: "Rejects trailing slash",
+			cfg: Config{
+				Target:    "unix:///var/run/",
+				UserAgent: "test/1.0",
+			},
+			wantErr: true,
+		},
+		{
+			name: "Rejects dns",
 			cfg: Config{
 				Target:    "dns:///localhost:8080",
 				UserAgent: "test/1.0",
 			},
-			wantErr: false,
+			wantErr: true,
 		},
 		{
-			name: "Valid passthrough: config",
+			name: "Rejects passthrough",
 			cfg: Config{
 				Target:    "passthrough:///localhost:8080",
-				UserAgent: "test/1.0",
-			},
-			wantErr: false,
-		},
-		{
-			name: "Rejects http scheme",
-			cfg: Config{
-				Target:    "http://evil.com",
-				UserAgent: "test/1.0",
-			},
-			wantErr: true,
-		},
-		{
-			name: "Rejects bare hostname",
-			cfg: Config{
-				Target:    "somehost:1234",
-				UserAgent: "test/1.0",
-			},
-			wantErr: true,
-		},
-		{
-			name: "Missing target",
-			cfg: Config{
 				UserAgent: "test/1.0",
 			},
 			wantErr: true,

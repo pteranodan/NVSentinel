@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 #  Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 #
@@ -33,9 +33,13 @@ source "${CODEGEN_ROOT}/kube_codegen.sh"
 # to allow codegen to execute successfully; trap ensures they are always restored.
 cleanup() {
   if [ -d "_examples" ] || [ -d "_test" ]; then
-    echo "Restoring examples and test directories..."
+    echo "Restoring examples, test directories, and providers..."
     mv _examples examples 2>/dev/null || true
     mv _test test 2>/dev/null || true
+    mv cmd/_nvml-provider cmd/nvml-provider 2>/dev/null || true
+    mv pkg/_provider pkg/provider 2>/dev/null || true
+
+    go mod tidy
   fi
 }
 
@@ -43,15 +47,17 @@ trap cleanup EXIT SIGINT SIGTERM
 
 
 if [ -d "examples" ] || [ -d "test" ]; then
-  echo "Temporarily hiding examples and test directories..."
+  echo "Temporarily hiding examples, test directories, and providers..."
   mv examples _examples 2>/dev/null || true
   mv test _test 2>/dev/null || true
+  mv cmd/nvml-provider cmd/_nvml-provider 2>/dev/null || true
+  mv pkg/provider pkg/_provider 2>/dev/null || true
 fi
 
 ###
 
 kube::codegen::gen_proto_bindings \
-  --output-dir "${REPO_ROOT}/internal/generated" \
+  --output-dir "${REPO_ROOT}/internal/generated/proto" \
   --proto-root "proto" \
   "${REPO_ROOT}/api"
 
@@ -62,12 +68,11 @@ kube::codegen::gen_helpers \
   "./api"
 
 kube::codegen::gen_client \
-  --proto-base "github.com/nvidia/nvsentinel/internal/generated" \
+  --proto-base "github.com/nvidia/nvsentinel/internal/generated/proto" \
   --output-dir "${REPO_ROOT}/pkg/client-go" \
   --output-pkg "github.com/nvidia/nvsentinel/pkg/client-go" \
   --boilerplate "hack/boilerplate.go.txt" \
-  --clientset-name "client" \
-  --versioned-name "versioned" \
+  --clientset-name "deviceapi" \
   --with-watch \
   --listers-name "listers" \
   --informers-name "informers" \

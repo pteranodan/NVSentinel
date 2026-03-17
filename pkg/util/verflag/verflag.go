@@ -111,7 +111,7 @@ func printVersionTable() {
 
 	fmt.Fprintf(w, "%s\n", programName)
 	fmt.Fprintf(w, "---\t---\n")
-	fmt.Fprintf(w, "Version\t%s\n", v.Version)
+	fmt.Fprintf(w, "GitVersion\t%s\n", v.GitVersion)
 	fmt.Fprintf(w, "GitCommit\t%s\n", v.GitCommit)
 	fmt.Fprintf(w, "BuildDate\t%s\n", v.BuildDate)
 	fmt.Fprintf(w, "GoVersion\t%s\n", v.GoVersion)

@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "device-apiserver.fullname" . }}
+  labels:
+    {{- include "device-apiserver.labels" . | nindent 4 }}
+    {{- with (default .Values.global dict).labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "device-apiserver.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        {{- include "device-apiserver.selectorLabels" . | nindent 8 }}
+        {{- with (default .Values.global dict).labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- $localSecrets := default list .Values.imagePullSecrets -}}
+      {{- $globalRootSecrets := default list (default dict .Values.global).imagePullSecrets -}}
+      {{- $globalImageSecrets := default list (default dict (default dict .Values.global).image).imagePullSecrets -}}
+      {{- $pullSecrets := concat $localSecrets $globalRootSecrets $globalImageSecrets | uniq -}}
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- range $pullSecrets }}
+        - name: {{ .name }}
+        {{- end }}
+      {{- end }}
+      serviceAccountName: {{ include "device-apiserver.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.runAsUser }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup }}
+            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          {{- $registry := .Values.image.registry | default (default dict .Values.global.image).registry }}
+          {{- $repository := .Values.image.repository }}
+          {{- $tag := .Values.image.tag | default (default dict .Values.global.image).tag | default .Chart.AppVersion }}
+          image: {{ printf "%s/%s:%s" $registry $repository $tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default .Values.global.image.pullPolicy | default "IfNotPresent" }}
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          args:
+            - "--bind-address=unix:///var/run/nvidia-device-api/device-api.sock"
+            - "--health-probe-bind-address=:{{ .Values.service.healthPort }}"
+            - "--metrics-bind-address=:{{ .Values.service.metricsPort }}"
+            {{- if .Values.pprof.enabled }}
+            - "--enable-pprof=true"
+            - "--pprof-bind-address=:{{ .Values.pprof.port }}"
+            {{- end }}
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: health
+              containerPort: {{ .Values.service.healthPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort }}
+              protocol: TCP
+            {{- if .Values.pprof.enabled }}
+            - name: pprof
+              containerPort: {{ .Values.pprof.port }}
+              protocol: TCP
+            {{- end }}
+          {{- if .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: run-device-api
+              mountPath: /var/run/nvidia-device-api
+            - name: lib-device-api
+              mountPath: /var/lib/nvidia-device-api
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: run-device-api
+          hostPath:
+            path: /var/run/nvidia-device-api
+            type: DirectoryOrCreate
+        - name: lib-device-api
+          hostPath:
+            path: /var/lib/nvidia-device-api
+            type: DirectoryOrCreate
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

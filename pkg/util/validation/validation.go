@@ -17,6 +17,7 @@ package validation
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -77,6 +78,43 @@ func IsTCPAddress(addr string) []string {
 		errs = append(errs, fmt.Sprintf("invalid port: %q", portStr))
 	} else {
 		errs = append(errs, validation.IsValidPortNum(port)...)
+	}
+
+	return errs
+}
+
+// IsSQLiteDSN verifies that the provided DSN is a valid SQLite data source name
+// string with the "sqlite://" prefix, an empty host, and an absolute file path.
+// It returns a slice of error messages, which is empty if the DSN is valid.
+func IsSQLiteDSN(dsn string) []string {
+	const scheme = "sqlite://"
+
+	var errs []string
+
+	if !strings.HasPrefix(dsn, scheme) {
+		errs = append(errs, fmt.Sprintf("must start with %q", scheme))
+		return errs
+	}
+
+	u, err := url.Parse(dsn)
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("failed to parse DSN: %v", err))
+		return errs
+	}
+
+	path := u.Path
+	if path == "" && u.Opaque != "" {
+		path = u.Opaque
+	}
+
+	if u.Host != "" {
+		errs = append(errs, fmt.Sprintf("host %q must be empty", u.Host))
+	}
+
+	if path == "" {
+		errs = append(errs, "path is missing")
+	} else if !filepath.IsAbs(path) {
+		errs = append(errs, fmt.Sprintf("path %q must be an absolute path", path))
 	}
 
 	return errs

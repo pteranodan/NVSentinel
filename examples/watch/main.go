@@ -12,11 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-// Package main demonstrates a long-running, event-driven agent.
-//
-// It establishes a persistent Watch stream with the device-api server,
-// handling gRPC connection lifecycles, custom interceptors for telemetry,
-// and real-time event processing for device state changes.
+// Package main demonstrates event-driven monitoring and advanced gRPC transport
+// configuration, including manual connection lifecycle and interceptor management.
 package main
 
 import (
@@ -35,26 +32,19 @@ import (
 
 	"github.com/go-logr/stdr"
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
+	"github.com/nvidia/nvsentinel/pkg/client-go/clientset/versioned"
 	"github.com/nvidia/nvsentinel/pkg/grpc/client"
 )
 
-//nolint:cyclop,gocritic // This is an example; complexity and exitAfterDefer is acceptable for clarity.
 func main() {
-	// Initialize a standard logger for transport-level visibility.
 	logger := stdr.New(log.New(os.Stdout, "", log.LstdFlags))
 	stdr.SetVerbosity(1)
 
-	// Determine the connection target.
-	// If the environment variable NVIDIA_DEVICE_API_TARGET is not set, use the
-	// default socket path: unix:///var/run/nvidia-device-api/device-api.sock
-	target := os.Getenv(client.NvidiaDeviceAPITargetEnvVar)
-	if target == "" {
-		target = client.DefaultNvidiaDeviceAPISocket
-	}
+	// Advanced transport management: Configure custom gRPC interceptors and lifecycle.
+	//   Note: manual connection management is required when injecting custom telemetry,
+	//   authentication, or tracing middleware into the transport layer.
 
-	// tracingInterceptor injects metadata (x-request-id) into outgoing requests.
-	// This enables request tracking across the gRPC boundary.
+	// Example: injecting request metadata.
 	tracingInterceptor := func(
 		ctx context.Context,
 		method string,
@@ -68,7 +58,7 @@ func main() {
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 
-	// watchMonitorInterceptor logs the start of long-lived Watch streams.
+	// Example: providing additional visibility into the lifecycle of long-lived streams.
 	watchMonitorInterceptor := func(
 		ctx context.Context,
 		desc *grpc.StreamDesc,
@@ -81,16 +71,16 @@ func main() {
 		return streamer(ctx, desc, cc, method, opts...)
 	}
 
-	// Configure manual DialOptions for transport-level control.
+	// Define options for transport-level control.
 	opts := []client.DialOption{
 		client.WithLogger(logger),
 		client.WithUnaryInterceptor(tracingInterceptor),
 		client.WithStreamInterceptor(watchMonitorInterceptor),
 	}
 
-	// Initialize the underlying gRPC connection manually.
-	config := &client.Config{Target: target}
+	config := client.GetConfigOrDie()
 
+	// Initialize the gRPC connection manually.
 	conn, err := client.ClientConnFor(config, opts...)
 	if err != nil {
 		logger.Error(err, "unable to connect to gRPC target")
@@ -98,31 +88,27 @@ func main() {
 	}
 	defer conn.Close()
 
-	// Initialize the Clientset using the existing connection.
-	// This is required when specific gRPC lifecycle or interceptor management is needed.
+	// Initialize a clientset using the existing gRPC connection.
 	clientset, err := versioned.NewForConfigAndClient(config, conn)
 	if err != nil {
 		logger.Error(err, "unable to create clientset")
 		os.Exit(1)
 	}
 
-	// Create a context that is canceled when the app receives SIGINT or SIGTERM.
+	// Trap system signals to ensure graceful shutdown of active gRPC streams.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// List GPUs. This triggers the Unary interceptor.
+	// Perform an initial List to establish baseline resource state.
 	list, err := clientset.DeviceV1alpha1().GPUs().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Error(err, "failed to list GPUs")
 		os.Exit(1)
 	}
-
 	logger.Info("retrieved GPU list", "count", len(list.Items))
 
-	// Watch GPUs. This triggers the Stream interceptor.
-	watcher, err := clientset.DeviceV1alpha1().GPUs().Watch(ctx, metav1.ListOptions{
-		ResourceVersion: list.ResourceVersion,
-	})
+	// Establish a Watch stream for real-time GPU resource updates.
+	watcher, err := clientset.DeviceV1alpha1().GPUs().Watch(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Error(err, "failed to establish watch stream")
 		os.Exit(1)
@@ -132,6 +118,7 @@ func main() {
 
 	logger.Info("watch stream established, waiting for events...")
 
+	// Process events from the stream.
 	for {
 		select {
 		case event, ok := <-watcher.ResultChan():
@@ -154,6 +141,7 @@ func main() {
 				continue
 			}
 
+			// Example: evaluate device readiness.
 			isReady := meta.IsStatusConditionTrue(gpu.Status.Conditions, "Ready")
 			status := "NotReady"
 

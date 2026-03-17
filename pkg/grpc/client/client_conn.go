@@ -15,7 +15,9 @@
 package client
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -40,24 +42,39 @@ func ClientConnFor(config *Config, opts ...DialOption) (*grpc.ClientConn, error)
 		return nil, err
 	}
 
-	// Insecure credentials are only safe over Unix domain sockets.
-	// TLS is required for non-UDS targets (dns:, passthrough:).
-	if !strings.HasPrefix(cfg.Target, "unix://") && !strings.HasPrefix(cfg.Target, "unix:") {
-		return nil, fmt.Errorf(
-			"insecure credentials require unix:// target, got %q; TLS is required for non-UDS targets",
-			cfg.Target,
-		)
-	}
-
 	logger := cfg.GetLogger()
 
 	grpcOpts := []grpc.DialOption{
 		grpc.WithUserAgent(cfg.UserAgent),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", strings.TrimPrefix(cfg.Target, "unix://"))
+		}),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(1<<24), // 16MiB
+			grpc.MaxCallSendMsgSize(2<<20), // 2MiB
+		),
+		grpc.WithDefaultServiceConfig(`{
+            "methodConfig": [{
+                "name": [{"service": ""}], 
+				"waitForReady": true,
+                "retryPolicy": {
+                    "maxAttempts": 5,
+                    "initialBackoff": "0.1s",
+                    "maxBackoff": "10s",
+                    "backoffMultiplier": 2.0,
+                    "retryableStatusCodes": [
+						"UNAVAILABLE",
+						"RESOURCE_EXHAUSTED",
+						"INTERNAL"
+					]
+                }
+            }]
+        }`),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                DefaultKeepAliveTime,
 			Timeout:             DefaultKeepAliveTimeout,
-			PermitWithoutStream: true, // Allow keepalive pings even with no active RPCs.
+			PermitWithoutStream: false,
 		}),
 	}
 

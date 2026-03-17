@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "nvml-provider.fullname" . }}
+  labels:
+    {{- include "nvml-provider.labels" . | nindent 4 }}
+    {{- with (default .Values.global dict).labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "nvml-provider.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        {{- include "nvml-provider.selectorLabels" . | nindent 8 }}
+        {{- with (default .Values.global dict).labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- $localSecrets := default list .Values.imagePullSecrets -}}
+      {{- $globalRootSecrets := default list (default dict .Values.global).imagePullSecrets -}}
+      {{- $globalImageSecrets := default list (default dict (default dict .Values.global).image).imagePullSecrets -}}
+      {{- $pullSecrets := concat $localSecrets $globalRootSecrets $globalImageSecrets | uniq -}}
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- range $pullSecrets }}
+        - name: {{ .name }}
+        {{- end }}
+      {{- end }}
+      serviceAccountName: {{ include "nvml-provider.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            runAsUser: {{ .Values.securityContext.runAsUser }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup }}
+            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          {{- $registry := .Values.image.registry | default (default dict .Values.global.image).registry }}
+          {{- $repository := .Values.image.repository }}
+          {{- $tag := .Values.image.tag | default (default dict .Values.global.image).tag | default .Chart.AppVersion }}
+          image: {{ printf "%s/%s:%s" $registry $repository $tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default .Values.global.image.pullPolicy | default "IfNotPresent" }}
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "utility"
+          {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          args:
+            - --bind-address=unix:///var/run/nvidia-device-api/device-api.sock
+            - --provider-id={{ include "nvml-provider.fullname" . }}
+            - --health-port={{ .Values.livenessProbe.httpGet.port }}
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: health
+              containerPort: {{ .Values.livenessProbe.httpGet.port }}
+              protocol: TCP
+          {{- if .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: run-device-api
+              mountPath: /var/run/nvidia-device-api
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: run-device-api
+          hostPath:
+            path: /var/run/nvidia-device-api
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

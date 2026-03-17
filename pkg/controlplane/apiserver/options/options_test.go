@@ -12,20 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package options
+package options_test
 
 import (
-	"context"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/nvidia/nvsentinel/pkg/controlplane/apiserver/options"
+	apistorage "k8s.io/apiserver/pkg/storage/storagebackend"
 	cliflag "k8s.io/component-base/cli/flag"
 )
 
 func TestAddFlags(t *testing.T) {
-	o := NewOptions()
+	o := options.NewOptions()
 	fss := &cliflag.NamedFlagSets{}
 	o.AddFlags(fss)
 
@@ -40,7 +41,7 @@ func TestAddFlags(t *testing.T) {
 
 	err := fs.Parse(args)
 	if err != nil {
-		t.Fatalf("Failed to parse flags: %v", err)
+		t.Fatalf("Failed to parse generic flags: %v", err)
 	}
 
 	if o.NodeName != "test-node" {
@@ -50,7 +51,6 @@ func TestAddFlags(t *testing.T) {
 	if o.HealthAddress != ":1234" {
 		t.Errorf("expected HealthAddress %s, got %s", ":1234", o.HealthAddress)
 	}
-
 	if o.ServiceMonitorPeriod != 30*time.Second {
 		t.Errorf("expected ServiceMonitorPeriod %v, got %s", 30*time.Second, o.ServiceMonitorPeriod)
 	}
@@ -62,19 +62,35 @@ func TestAddFlags(t *testing.T) {
 	if o.ShutdownGracePeriod != 10*time.Second {
 		t.Errorf("expected ShutdownGracePeriod %v, got %v", 10*time.Second, o.ShutdownGracePeriod)
 	}
+
+	debugFs := fss.FlagSet("debug")
+	debugArgs := []string{
+		"--enable-pprof=true",
+		"--pprof-bind-address=:9012",
+	}
+
+	err = debugFs.Parse(debugArgs)
+
+	if err != nil {
+		t.Fatalf("Failed to parse debug flags: %v", err)
+	}
+
+	if o.EnablePprof != true {
+		t.Errorf("expected EnablePprof true, got %v", o.EnablePprof)
+	}
+	if o.PprofAddress != ":9012" {
+		t.Errorf("expected PprofAddress %s, got %s", ":9012", o.PprofAddress)
+	}
 }
 
 func TestComplete(t *testing.T) {
 	os.Unsetenv("NODE_NAME")
 
 	t.Run("Default assignments", func(t *testing.T) {
-		o := NewOptions()
-		o.HealthAddress = ""
-		o.MetricsAddress = ""
-		o.ServiceMonitorPeriod = 0
-		o.ShutdownGracePeriod = 0
+		o := options.NewOptions()
+		o.EnablePprof = true
 
-		completed, err := o.Complete(context.Background())
+		completed, err := o.Complete()
 		if err != nil {
 			t.Fatalf("Complete failed: %v", err)
 		}
@@ -85,39 +101,75 @@ func TestComplete(t *testing.T) {
 		if completed.MetricsAddress != ":9090" {
 			t.Errorf("expected default metrics address :9090, got %s", completed.MetricsAddress)
 		}
+		if completed.PprofAddress != ":6060" {
+			t.Errorf("expected default pprof address :6060, got %s", completed.PprofAddress)
+		}
+
 		if completed.ServiceMonitorPeriod != 10*time.Second {
 			t.Errorf("expected default service monitor period 10s, got %s", completed.ServiceMonitorPeriod)
 		}
 		if completed.ShutdownGracePeriod != 25*time.Second {
 			t.Errorf("expected default shutdown grace period 25s, got %v", completed.ShutdownGracePeriod)
 		}
-		if completed.NodeName == "" {
-			t.Errorf("expected node name to be system hostname, got %s", completed.NodeName)
+
+		if len(completed.Server) == 0 {
+			t.Errorf("expected gRPC server options, got none")
+		}
+
+		if completed.Storage.Type != apistorage.StorageTypeETCD3 {
+			t.Errorf("expected storage type to be %s, got %s", apistorage.StorageTypeETCD3, completed.Storage.Type)
 		}
 	})
 
-	t.Run("NodeName normalization", func(t *testing.T) {
-		o := NewOptions()
-		o.NodeName = "  UPPER-case-Node  "
-
-		completed, _ := o.Complete(context.Background())
-
-		expected := "upper-case-node"
-		if completed.NodeName != expected {
-			t.Errorf("expected node name %q, got %q", expected, completed.NodeName)
+	t.Run("NodeName resolution", func(t *testing.T) {
+		o1 := options.NewOptions()
+		o1.NodeName = "  UPPER-case-Node  "
+		c1, err := o1.Complete()
+		if err != nil {
+			t.Fatalf("Complete failed: %v", err)
 		}
-	})
+		if c1.NodeName != "upper-case-node" {
+			t.Errorf("expected normalized node name %q, got %q", "upper-case-node", c1.NodeName)
+		}
 
-	t.Run("Manual override takes precedence over ENV", func(t *testing.T) {
-		os.Setenv("NODE_NAME", "env-value")
+		os.Setenv("NODE_NAME", "env-node-name")
 		defer os.Unsetenv("NODE_NAME")
 
-		o := NewOptions()
-		o.NodeName = "manual-override"
+		o2 := options.NewOptions()
+		o2.NodeName = ""
+		c2, err := o2.Complete()
+		if err != nil {
+			t.Fatalf("Complete failed: %v", err)
+		}
+		if c2.NodeName != "env-node-name" {
+			t.Errorf("expected node name from ENV %q, got %q", "env-node-name", c2.NodeName)
+		}
 
-		completed, _ := o.Complete(context.Background())
-		if completed.NodeName != "manual-override" {
-			t.Errorf("expected node name %q, got %q", "manual-override", completed.NodeName)
+		o3 := options.NewOptions()
+		o3.NodeName = "manual-override"
+		c3, err := o3.Complete()
+		if err != nil {
+			t.Fatalf("Complete failed: %v", err)
+		}
+		if c3.NodeName != "manual-override" {
+			t.Errorf("manual override should beat ENV, got %q", c3.NodeName)
+		}
+	})
+
+	t.Run("NodeName system hostname fallback", func(t *testing.T) {
+		os.Unsetenv("NODE_NAME")
+		o := options.NewOptions()
+		o.NodeName = ""
+
+		completed, err := o.Complete()
+		if err != nil {
+			t.Fatalf("Complete failed: %v", err)
+		}
+
+		expectedHostname, _ := os.Hostname()
+		expectedHostname = strings.ToLower(expectedHostname)
+		if completed.NodeName != expectedHostname {
+			t.Errorf("expected node name to match system hostname %q, got %q", expectedHostname, completed.NodeName)
 		}
 	})
 }
@@ -125,81 +177,137 @@ func TestComplete(t *testing.T) {
 func TestValidate(t *testing.T) {
 	tests := []struct {
 		name        string
-		modify      func(*Options)
+		modify      func(*options.Options)
 		wantErr     bool
 		errContains string
 	}{
 		{
-			name:    "Valid configuration",
-			modify:  func(o *Options) { o.NodeName = "valid-node" },
+			name:    "Defaults valid",
+			modify:  func(o *options.Options) {},
 			wantErr: false,
 		},
 		{
-			name: "Invalid node name",
-			modify: func(o *Options) {
-				// NodeName is lowercased, but underscores are still illegal
-				o.NodeName = "invalid_node_name"
-			},
+			name:    "Valid NodeName",
+			modify:  func(o *options.Options) { o.NodeName = "valid-node" },
+			wantErr: false,
+		},
+		{
+			name:        "Invalid NodeName",
+			modify:      func(o *options.Options) { o.NodeName = "invalid_node_name" },
 			wantErr:     true,
 			errContains: "hostname-override \"invalid_node_name\":",
 		},
 		{
-			name: "Invalid health address",
-			modify: func(o *Options) {
-				o.HealthAddress = "127.0.0.1:99999" // Port out of range
-			},
+			name:        "Missing BindAddress",
+			modify:      func(o *options.Options) { o.BindAddress = "" },
 			wantErr:     true,
-			errContains: "health-probe-bind-address \"127.0.0.1:99999\":",
+			errContains: "required",
 		},
 		{
-			name: "Address collision",
-			modify: func(o *Options) {
+			name:        "Invalid Unix socket URI",
+			modify:      func(o *options.Options) { o.BindAddress = "/tmp/not-a-uri.sock" },
+			wantErr:     true,
+			errContains: "",
+		},
+		{
+			name:        "Missing HealthAddress",
+			modify:      func(o *options.Options) { o.HealthAddress = "" },
+			wantErr:     true,
+			errContains: "required",
+		},
+		{
+			name:        "Invalid HealthAddress port",
+			modify:      func(o *options.Options) { o.HealthAddress = "127.0.0.1:99999" },
+			wantErr:     true,
+			errContains: "\"127.0.0.1:99999\":",
+		},
+		{
+			name:        "Invalid MetricsAddress port",
+			modify:      func(o *options.Options) { o.MetricsAddress = "127.0.0.1:99999" },
+			wantErr:     true,
+			errContains: "\"127.0.0.1:99999\":",
+		},
+		{
+			name: "Port collision: Health and Metrics",
+			modify: func(o *options.Options) {
 				o.HealthAddress = ":8080"
 				o.MetricsAddress = ":8080"
 			},
 			wantErr:     true,
-			errContains: "must not use the same port (8080)",
+			errContains: "must not use the same port",
 		},
 		{
-			name: "Negative service monitor period",
-			modify: func(o *Options) {
-				o.ServiceMonitorPeriod = -5 * time.Second
+			name: "Pprof enabled but missing PprofAddress",
+			modify: func(o *options.Options) {
+				o.EnablePprof = true
+				o.PprofAddress = ""
 			},
 			wantErr:     true,
-			errContains: "service-monitor-period: -5s must be greater than or equal to 0s",
+			errContains: "required",
 		},
 		{
-			name: "Service monitor period exceeds max",
-			modify: func(o *Options) {
-				o.ServiceMonitorPeriod = 75 * time.Second
+			name: "Invalid PprofAddress port",
+			modify: func(o *options.Options) {
+				o.EnablePprof = true
+				o.PprofAddress = "127.0.0.1:99999"
 			},
 			wantErr:     true,
-			errContains: "service-monitor-period: 1m15s must be 1m or less",
+			errContains: "\"127.0.0.1:99999\":",
 		},
 		{
-			name: "Negative shutdown grace period",
-			modify: func(o *Options) {
-				o.ShutdownGracePeriod = -5 * time.Second
+			name: "Port colission: Health and Pprof",
+			modify: func(o *options.Options) {
+				o.HealthAddress = ":8080"
+				o.EnablePprof = true
+				o.PprofAddress = ":8080"
 			},
 			wantErr:     true,
-			errContains: "shutdown-grace-period: -5s must be greater than or equal to 0s",
+			errContains: "must not use the same port",
 		},
 		{
-			name: "Shutdown grace period exceeds max",
-			modify: func(o *Options) {
-				o.ShutdownGracePeriod = 11 * time.Minute
-			},
+			name:        "ServiceMonitorPeriod negative",
+			modify:      func(o *options.Options) { o.ServiceMonitorPeriod = -2 * time.Minute },
 			wantErr:     true,
-			errContains: "shutdown-grace-period: 11m0s must be 10m or less",
+			errContains: "greater than or equal to 0s",
+		},
+		{
+			name:        "ServiceMonitorPeriod out of bounds",
+			modify:      func(o *options.Options) { o.ServiceMonitorPeriod = 2 * time.Minute },
+			wantErr:     true,
+			errContains: "or less",
+		},
+		{
+			name:        "ShutdownGracePeriod negative",
+			modify:      func(o *options.Options) { o.ShutdownGracePeriod = -2 * time.Minute },
+			wantErr:     true,
+			errContains: "greater than or equal to 0s",
+		},
+		{
+			name:        "ShutdownGracePeriod out of bounds",
+			modify:      func(o *options.Options) { o.ShutdownGracePeriod = 30 * time.Minute },
+			wantErr:     true,
+			errContains: "or less",
+		},
+		{
+			name:        "Invalid gRPC option",
+			modify:      func(o *options.Options) { o.GRPC.MaxSendMsgSize = 512 },
+			wantErr:     true,
+			errContains: "--grpc-max-send-msg-size",
+		},
+		{
+			name:        "Invalid storage option",
+			modify:      func(o *options.Options) { o.Storage.Type = apistorage.StorageTypeETCD2 },
+			wantErr:     true,
+			errContains: "--storage-type",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			o := NewOptions()
+			o := options.NewOptions()
 			tt.modify(o)
 
-			completed, err := o.Complete(context.Background())
+			completed, err := o.Complete()
 			if err != nil {
 				t.Fatalf("Complete failed in test setup: %v", err)
 			}

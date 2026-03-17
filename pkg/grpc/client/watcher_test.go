@@ -32,10 +32,11 @@ func TestWatcher_NormalEvents(t *testing.T) {
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	events := make(chan testEvent, 3)
+	events := make(chan testEvent, 4)
 	events <- testEvent{"ADDED", &FakeObject{Name: "obj1"}}
 	events <- testEvent{"MODIFIED", &FakeObject{Name: "obj1"}}
 	events <- testEvent{"DELETED", &FakeObject{Name: "obj1"}}
+	events <- testEvent{"BOOKMARK", &FakeObject{Name: "obj1"}}
 	close(events)
 
 	source := &FakeSource{events: events, done: make(chan struct{})}
@@ -46,7 +47,7 @@ func TestWatcher_NormalEvents(t *testing.T) {
 		got = append(got, e)
 	}
 
-	wantTypes := []watch.EventType{watch.Added, watch.Modified, watch.Deleted}
+	wantTypes := []watch.EventType{watch.Added, watch.Modified, watch.Deleted, watch.Bookmark}
 	if len(got) != len(wantTypes) {
 		t.Fatalf("got %d events, want %d", len(got), len(wantTypes))
 	}
@@ -90,8 +91,8 @@ func TestWatcher_Errors(t *testing.T) {
 		wantCode   int32
 	}{
 		{"Internal", status.Error(codes.Internal, "err"), "", int32(codes.Internal)},
+		{"InvalidArgument", status.Error(codes.InvalidArgument, "err"), metav1.StatusReasonBadRequest, 400},
 		{"OutOfRange", status.Error(codes.OutOfRange, "err"), metav1.StatusReasonExpired, 410},
-		{"InvalidArgument", status.Error(codes.InvalidArgument, "err"), metav1.StatusReasonExpired, 410},
 	}
 
 	for _, tc := range cases {

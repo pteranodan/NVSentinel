@@ -94,6 +94,7 @@ func (g *genGroup) GenerateType(c *generator.Context, t *types.Type, w io.Writer
 		"GroupGoName":         g.groupGoName,
 		"Version":             namer.IC(g.version),
 		"types":               g.types,
+		"context":             c.Universe.Type(types.Name{Package: "context", Name: "Context"}),
 		"ClientConnInterface": c.Universe.Type(types.Name{Package: "google.golang.org/grpc", Name: "ClientConnInterface"}),
 		"Config":              c.Universe.Type(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "Config"}),
 		"ClientConnFor":       c.Universe.Function(types.Name{Package: "github.com/nvidia/nvsentinel/pkg/grpc/client", Name: "ClientConnFor"}),

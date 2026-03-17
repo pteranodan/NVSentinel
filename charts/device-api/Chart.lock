@@ -1,0 +1,9 @@
+dependencies:
+- name: device-apiserver
+  repository: file://../device-apiserver
+  version: 0.1.0
+- name: nvml-provider
+  repository: file://../nvml-provider
+  version: 0.1.0
+digest: sha256:207700fd3aaf816c4d351e2f52e1fb5eff8043a106d8ab52584fcbc5ed33398d
+generated: "2026-03-06T16:04:03.686836-05:00"

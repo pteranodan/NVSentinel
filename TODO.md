@@ -13,6 +13,15 @@
 - [ ] api validation
 - [ ] discovery api
     - *removes the need for users to provide a RESTMapper to controller-runtime manager*
+- [ ] vtproto PoC
+
+- [ ] verify nvml-provider works post refactor
+- [ ] update GH workflows (include 'shorter' perf test in CI?)
+- [ ] fix lint errors
+- [ ] update docs
+- [ ] perf testing: new make target, build script (hack/perf.sh), automated cluster creation, deployment, execution
+- [ ] wrap make code-gen with consistent logs
+- [ ] update/verify examples work post refactor
 
 ---
 
@@ -27,21 +36,20 @@
 - [x] admin interface
 - [x] version metric
 - [x] version endpoint
+- [ ] clean up gRPC error handling
 - [ ] datastore
-  - [ ] ?additional Kine compaction control?
-  - [ ] ?additional SQLite compaction control?
   - [ ] ?export db size metric?
   - [ ] ?server-side cache?
 - [ ] service-gen
-  - [ ] ?fake server?
-- [ ] deployment
-  - [ ] image
-  - [ ] helm chart
-  - [ ] publish
-  - [ ] docs
+  - [ ] ?gen fake server?
+- [x] deployment
+  - [x] image
+  - [x] helm chart
+  - [x] publish
+  - [x] docs
 - [x] unit tests
-- [ ] integration tests
-- [ ] performance tests
+- [x] integration tests
+- [x] performance tests
 
 ---
 
@@ -49,10 +57,10 @@
 
 - [ ] client-gen
   - [ ] discovery api
-  - [ ] **implement updateStatus template**
-  - [ ] **implement patch template**
+  - [x] **implement updateStatus template**
+  - [x] **implement patch template**
   - [ ] ?aggregated clientset w/ standard k8s clientset?
-- [ ] integration tests
+- [x] integration tests
 - [ ] ?add version to request header?
 
 ---

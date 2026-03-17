@@ -66,15 +66,15 @@ func NewWatcher(
 	return w
 }
 
-// Stop signals the receive loop to exit, cancels the context, and closes the event source.
+// Stop signals the receive loop to exit then cancels the context and closes the event source.
 func (w *Watcher) Stop() {
 	w.stopOnce.Do(func() {
-		w.logger.V(4).Info("Stopping watcher")
-		close(w.done) // Signal receive loop to exit first
-		w.cancel()    // Cancel the context
+		w.logger.V(4).Info("Shutting down watcher")
+		close(w.done)
+		w.cancel()
 
 		if err := w.source.Close(); err != nil {
-			w.logger.V(4).Info("Error closing source during stop", "err", err)
+			w.logger.V(4).Error(err, "Failed to close watch source during termination")
 		}
 	})
 }
@@ -89,22 +89,26 @@ func (w *Watcher) ResultChan() <-chan watch.Event {
 // nolint:cyclop // Complexity is necessary to handle various gRPC stream states and event types.
 func (w *Watcher) receive() {
 	defer func() {
-		w.logger.V(4).Info("Watcher receive loop exiting")
+		w.logger.V(4).Info("Receive loop terminated")
 		close(w.result)
 	}()
 	defer w.Stop()
 
+	timeout := 30 * time.Second
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	for {
-		w.logger.V(6).Info("Waiting for next event from source")
+		w.logger.V(6).Info("Waiting for next watch event")
 
 		typeStr, obj, err := w.source.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) || status.Code(err) == codes.Canceled {
-				w.logger.V(3).Info("Watch stream closed normally")
+				w.logger.V(3).Info("Watch stream ended cleanly")
 				return
 			}
 
-			w.logger.Error(err, "Watch stream encountered unexpected error")
+			w.logger.Error(err, "Watch stream failed unexpectedly")
 			w.sendError(err)
 
 			return
@@ -120,30 +124,33 @@ func (w *Watcher) receive() {
 		case "DELETED":
 			eventType = watch.Deleted
 		case "ERROR":
-			w.logger.V(4).Info("Received explicit ERROR event from server")
+			w.logger.V(4).Info("Observed error event from watch stream")
 
 			w.result <- watch.Event{Type: watch.Error, Object: obj}
 
 			return
+		case "BOOKMARK":
+			eventType = watch.Bookmark
 		default:
-			w.logger.V(1).Info("Skipping unknown event type from server", "rawType", typeStr)
+			w.logger.V(2).Info("Ignored unknown watch event type", "type", typeStr)
 			continue
 		}
 
+		timer.Reset(timeout)
 		select {
 		case <-w.done:
-			w.logger.V(3).Info("Watcher stopping; aborting receive loop")
+			w.logger.V(3).Info("Stop requested; exiting receive loop")
 			return
 		case w.result <- watch.Event{Type: eventType, Object: obj}:
 			if meta, ok := obj.(metav1.Object); ok {
-				w.logger.V(6).Info("Event dispatched to Informer",
+				w.logger.V(6).Info("Event dispatched",
 					"type", eventType,
 					"name", meta.GetName(),
 					"resourceVersion", meta.GetResourceVersion(),
 				)
 			}
-		case <-time.After(30 * time.Second):
-			w.logger.Error(nil, "Event send timed out; consumer not reading, stopping watcher")
+		case <-timer.C:
+			w.logger.Error(nil, "Watch connection dropped: consumer is too slow", "timeout", timeout)
 			return
 		}
 	}
@@ -153,32 +160,29 @@ func (w *Watcher) sendError(err error) {
 	st := status.Convert(err)
 	code := st.Code()
 
-	// Log full error details at debug level only
-	w.logger.V(4).Info("Watch stream error",
-		"code", code,
-		"serverMessage", st.Message(),
-	)
-
 	statusErr := &metav1.Status{
 		Status:  metav1.StatusFailure,
-		Message: fmt.Sprintf("watch stream error: %s", code.String()),
+		Message: fmt.Sprintf("watch stream error: %s: %s", code.String(), st.Message()),
 		Code:    int32(code), // #nosec G115
 	}
 
 	//nolint:exhaustive // Only specific gRPC codes require special Kubernetes status mapping.
 	switch code {
-	case codes.OutOfRange, codes.ResourceExhausted, codes.InvalidArgument:
-		// CRITICAL for Informers: This tells the Reflector to perform a new List operation.
-		statusErr.Reason = metav1.StatusReasonExpired
-		statusErr.Code = 410
+	case codes.InvalidArgument:
+		statusErr.Reason = metav1.StatusReasonBadRequest
+		statusErr.Code = 400
 	case codes.PermissionDenied:
 		statusErr.Reason = metav1.StatusReasonForbidden
 		statusErr.Code = 403
 	case codes.NotFound:
 		statusErr.Reason = metav1.StatusReasonNotFound
 		statusErr.Code = 404
+	case codes.OutOfRange, codes.ResourceExhausted:
+		// CRITICAL for Informers: This tells the Reflector to perform a new List operation.
+		statusErr.Reason = metav1.StatusReasonExpired
+		statusErr.Code = 410
 	default:
-		w.logger.V(5).Info("Using default status mapping for gRPC code", "code", code)
+		w.logger.V(5).Info("No specialized status mapping found", "grpcCode", code)
 	}
 
 	w.logger.V(4).Info("Sending error event to informer",
@@ -187,11 +191,16 @@ func (w *Watcher) sendError(err error) {
 		"message", statusErr.Message,
 	)
 
+	timeout := 5 * time.Second
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	timer.Reset(timeout)
 	select {
 	case <-w.done:
-		w.logger.V(4).Info("Watcher already done, dropping error event")
+		w.logger.V(4).Info("Watcher shutting down; dropping error event")
 	case w.result <- watch.Event{Type: watch.Error, Object: statusErr}:
-	case <-time.After(5 * time.Second):
-		w.logger.V(2).Info("Error event send timed out, dropping")
+	case <-timer.C:
+		w.logger.Error(nil, "Watch recovery event dropped: consumer is too slow", "timeout", timeout)
 	}
 }

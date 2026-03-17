@@ -12,8 +12,10 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-// TestGPUInformerWithFakeClient demonstrates how to integrate a fake versioned
-// clientset with a SharedInformerFactory in tests.
+// Package main_test demonstrates unit testing logic using the fake versioned clientset.
+//
+// It shows how to use an in-memory ObjectTracker to simulate server-side events,
+// ensuring controllers and informers react correctly to device state changes.
 package main_test
 
 import (
@@ -23,7 +25,7 @@ import (
 	"time"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/fake"
+	"github.com/nvidia/nvsentinel/pkg/client-go/clientset/versioned/fake"
 	"github.com/nvidia/nvsentinel/pkg/client-go/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -31,6 +33,8 @@ import (
 	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 )
+
+// TODO: fix this and remove the need for the bookmark boilerplate.
 
 // bookmarkWatch wraps a watch.Interface to inject a bookmark event after
 // creation. This is needed because k8s.io/client-go v0.35+ requires bookmark

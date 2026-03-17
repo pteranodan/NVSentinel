@@ -12,128 +12,111 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-// Package main demonstrates how to build a Kubernetes Controller for local devices.
-//
-// It uses controller-runtime to reconcile GPU resources, injecting a custom
-// gRPC-backed Informer to bypass the standard Kubernetes API server and
-// read directly from the local NVIDIA Device API socket.
+// TODO: fix broken example
+
+// Package main demonstrates how to use the NVIDIA Device API with a standard controller.
 package main
 
 import (
 	"context"
-	"net/http"
 	"os"
-	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/rest"
-	toolscache "k8s.io/client-go/tools/cache"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
-	"github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/scheme"
-	informers "github.com/nvidia/nvsentinel/pkg/client-go/informers/externalversions"
+	"github.com/nvidia/nvsentinel/pkg/client-go/clientset/versioned"
 	"github.com/nvidia/nvsentinel/pkg/grpc/client"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 )
+
+var (
+	scheme = runtime.NewScheme()
+)
+
+func init() {
+	// Register NVIDIA Device types
+	utilruntime.Must(devicev1alpha1.AddToScheme(scheme))
+	// Register Standard K8s types for hybrid use
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+}
 
 func main() {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	setupLog := ctrl.Log.WithName("setup")
 
-	// Determine the connection target.
-	// If the environment variable NVIDIA_DEVICE_API_TARGET is not set, use the
-	// default socket path: unix:///var/run/nvidia-device-api/device-api.sock
-	target := os.Getenv(client.NvidiaDeviceAPITargetEnvVar)
+	k8sConfig := ctrl.GetConfigOrDie()
+
+	// Resolve the connection target from the environment or use the default socket path.
+	target := os.Getenv(client.DeviceAPISocketEnvVar)
 	if target == "" {
-		target = client.DefaultNvidiaDeviceAPISocket
+		target = client.DefaultDeviceAPISocketPath
 	}
 
-	// Initialize the versioned Clientset using the gRPC transport.
-	config := &client.Config{Target: target}
+	/*
+		// Initialize the device Clientset.
+		deviceConfig := &client.Config{Target: target}
+		deviceClientset := versioned.NewForConfigOrDie(context.TODO(), deviceConfig)
 
-	clientset, err := versioned.NewForConfig(config)
-	if err != nil {
-		setupLog.Error(err, "unable to create clientset")
-		os.Exit(1)
-	}
+		factory := informers.NewSharedInformerFactory(deviceClientset, 10*time.Minute)
+		gpuInformer := factory.Device().V1alpha1().GPUs().Informer()
 
-	// Create a factory for the gRPC-backed informers.
-	// We use a 10-minute resync period to ensure cache consistency.
-	// Note: We do not start the factory here; the Manager will start the injected informer.
-	factory := informers.NewSharedInformerFactory(clientset, 10*time.Minute)
-	gpuInformer := factory.Device().V1alpha1().GPUs().Informer()
-
-	// Initialize the controller-runtime Manager.
-	// A dummy rest.Config is used here as we are not connecting to a real K8s API server.
-	mgr, err := ctrl.NewManager(&rest.Config{Host: "http://localhost:0"}, ctrl.Options{
-		Scheme: scheme.Scheme,
-		// MapperProvider returns a RESTMapper that defines GPU resources as root-scoped.
-		// Required because the gRPC endpoint does not provide discovery APIs currently.
-		MapperProvider: func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
-			mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{devicev1alpha1.SchemeGroupVersion})
-			mapper.Add(devicev1alpha1.SchemeGroupVersion.WithKind("GPU"), meta.RESTScopeRoot)
-
-			return mapper, nil
-		},
-		Cache: cache.Options{
-			// NewInformer allows injecting a specific informer for a GroupVersionKind.
-			// This bypasses the default API server ListerWatcher for GPU resources.
-			NewInformer: func(
-				lw toolscache.ListerWatcher,
-				obj runtime.Object,
-				resync time.Duration,
-				indexers toolscache.Indexers,
-			) toolscache.SharedIndexInformer {
-				if _, ok := obj.(*devicev1alpha1.GPU); ok {
-					// Merge the indexers required by controller-runtime with those
-					// already present in the gRPC informer. Conflicting keys (e.g., "namespace")
-					// are skipped to prefer the existing implementation.
-					existingIndexers := gpuInformer.GetIndexer().GetIndexers()
-					for key, indexerFunc := range indexers {
-						if _, exists := existingIndexers[key]; !exists {
-							err := gpuInformer.AddIndexers(toolscache.Indexers{key: indexerFunc})
-							if err != nil {
-								setupLog.Error(err, "failed to add indexer to informer", "key", key)
-								os.Exit(1)
-							}
-						}
-					}
-
-					return gpuInformer
+		// Initialize the controller-runtime Manager.
+		// A dummy rest.Config is used here as we are not connecting to a real K8s API server.
+		mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
+			Scheme: scheme,
+			MapperProvider: func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
+				mapper, err := apiutil.NewDynamicRESTMapper(c, httpClient)
+				if err != nil {
+					return nil, err
 				}
-				// Fallback: For all other types, return a standard informer. This allows the
-				// manager to still handle standard Kubernetes resources (like Pods or Events)
-				// using the default API server transport, enabling "hybrid" reconciliation.
-				return toolscache.NewSharedIndexInformer(lw, obj, resync, indexers)
+				fixedMapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{devicev1alpha1.SchemeGroupVersion})
+				fixedMapper.Add(devicev1alpha1.SchemeGroupVersion.WithKind("GPU"), meta.RESTScopeRoot)
+				return meta.FirstHitRESTMapper{MultiRESTMapper: []meta.RESTMapper{mapper, fixedMapper}}, nil
 			},
-		},
-	})
-	if err != nil {
-		setupLog.Error(err, "unable to create manager")
-		os.Exit(1)
-	}
+			NewClient: func(config *rest.Config, opts ctrlclient.Options) (ctrlclient.Client, error) {
+				return deviceclient.New(k8sConfig, deviceConfig, opts)
+			},
+			Cache: cache.Options{
+				NewInformer: func(lw toolscache.ListerWatcher, obj runtime.Object, resync time.Duration, indexers toolscache.Indexers) toolscache.SharedIndexInformer {
+					if _, ok := obj.(*devicev1alpha1.GPU); ok {
+						if err := gpuInformer.AddIndexers(indexers); err != nil {
+							setupLog.V(1).Info("Informer already has some of these indexers", "error", err)
+						}
+						return gpuInformer
+					}
+					return toolscache.NewSharedIndexInformer(lw, obj, resync, indexers)
+				},
+			},
+		})
+		if err != nil {
+			setupLog.Error(err, "unable to create manager")
+			os.Exit(1)
+		}
 
-	if err = (&GPUReconciler{
-		Client: mgr.GetClient(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "gpu")
-		os.Exit(1)
-	}
+		if err = (&GPUReconciler{
+			Client: mgr.GetClient(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "gpu")
+			os.Exit(1)
+		}
 
-	ctx := ctrl.SetupSignalHandler()
+		ctx := ctrl.SetupSignalHandler()
 
-	setupLog.Info("starting manager")
+		setupLog.Info("starting manager")
 
-	if err := mgr.Start(ctx); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
-	}
+		if err := mgr.Start(ctx); err != nil {
+			setupLog.Error(err, "problem running manager")
+			os.Exit(1)
+		}
+	*/
 }
 
 // GPUReconciler reconciles GPUs using the local gRPC cache.
@@ -143,6 +126,16 @@ type GPUReconciler struct {
 
 func (r *GPUReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
+
+	list := &devicev1alpha1.GPUList{}
+	if err := r.List(ctx, list); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Cache Status", "total_gpus_found", len(list.Items))
+	for _, g := range list.Items {
+		log.Info("GPU in Cache", "name", g.Name, "ns", g.Namespace)
+	}
 
 	var gpu devicev1alpha1.GPU
 	// The Get call is transparently routed through the injected gRPC-backed informer.
@@ -156,7 +149,45 @@ func (r *GPUReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 }
 
 func (r *GPUReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	skipNameValidation := true
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&devicev1alpha1.GPU{}).
+		WithOptions(controller.TypedOptions[reconcile.Request]{
+			SkipNameValidation: &skipNameValidation,
+		}).
 		Complete(r)
+}
+
+// --- Subresource Operations ---
+
+func (c *DynamicClient) Status() ctrlclient.SubResourceWriter {
+	return &dynamicStatusWriter{
+		SubResourceWriter: c.Client.Status(),
+		deviceClient:      c.DeviceClient,
+	}
+}
+
+type dynamicStatusWriter struct {
+	ctrlclient.SubResourceWriter
+	deviceClient versioned.Interface
+}
+
+func (w *dynamicStatusWriter) Update(ctx context.Context, obj ctrlclient.Object, opts ...ctrlclient.SubResourceUpdateOption) error {
+	if gpu, ok := obj.(*devicev1alpha1.GPU); ok {
+		_, err := w.deviceClient.DeviceV1alpha1().GPUs().UpdateStatus(ctx, gpu, metav1.UpdateOptions{})
+		return err
+	}
+	return w.SubResourceWriter.Update(ctx, obj, opts...)
+}
+
+func (w *dynamicStatusWriter) Patch(ctx context.Context, obj ctrlclient.Object, patch ctrlclient.Patch, opts ...ctrlclient.SubResourcePatchOption) error {
+	if gpu, ok := obj.(*devicev1alpha1.GPU); ok {
+		data, err := patch.Data(gpu)
+		if err != nil {
+			return err
+		}
+		_, err = w.deviceClient.DeviceV1alpha1().GPUs().Patch(ctx, gpu.Name, types.PatchType(patch.Type()), data, metav1.PatchOptions{}, "status")
+		return err
+	}
+	return w.SubResourceWriter.Patch(ctx, obj, patch, opts...)
 }

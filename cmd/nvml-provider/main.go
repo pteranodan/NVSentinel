@@ -12,48 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build nvml
-
 // Command nvml-provider is a standalone NVML-based GPU health provider that
-// connects to a device-api-server instance via gRPC.
-//
-// This is designed to run as a sidecar container alongside device-api-server,
-// providing GPU enumeration and health monitoring via NVML.
+// connects to a device-apiserver instance.
 //
 // Usage:
 //
-//	nvml-provider --server-address=localhost:9001 --driver-root=/run/nvidia/driver
+//	nvml-provider --bind-address=unix:///var/run/nvidia-device-api/device-api.sock --driver-root=/run/nvidia/driver
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	devicev1alpha1 "github.com/nvidia/nvsentinel/api/device/v1alpha1"
-	clientset "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned"
-	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/client/versioned/typed/device/v1alpha1"
-	nvmlpkg "github.com/nvidia/nvsentinel/pkg/providers/nvml"
+	"github.com/nvidia/nvsentinel/pkg/client-go/device"
+	gpuclient "github.com/nvidia/nvsentinel/pkg/client-go/device/typed/device/v1alpha1"
+	"github.com/nvidia/nvsentinel/pkg/grpc/client"
+	nvmlpkg "github.com/nvidia/nvsentinel/pkg/provider/nvml"
 )
 
 const (
 	// DefaultProviderID is the default identifier for this provider.
-	DefaultProviderID = "nvml-provider-sidecar"
+	DefaultProviderID = "nvml-provider"
 
 	// HeartbeatInterval is how often to send heartbeats.
 	HeartbeatInterval = 10 * time.Second
@@ -65,7 +58,7 @@ const (
 	EventTimeout = 5000
 
 	// DefaultServerAddress is the default device-api-server address.
-	DefaultServerAddress = "localhost:9001"
+	DefaultBindAddress = "unix:///var/run/nvidia-device-api/device-api.sock"
 
 	// ConnectionRetryInterval is how long to wait between connection attempts.
 	ConnectionRetryInterval = 5 * time.Second
@@ -76,7 +69,7 @@ const (
 
 // Config holds the provider configuration.
 type Config struct {
-	ServerAddress      string
+	BindAddress        string
 	ProviderID         string
 	DriverRoot         string
 	HealthCheckEnabled bool
@@ -87,7 +80,7 @@ type Config struct {
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() Config {
 	return Config{
-		ServerAddress:      DefaultServerAddress,
+		BindAddress:        DefaultBindAddress,
 		ProviderID:         DefaultProviderID,
 		DriverRoot:         "/run/nvidia/driver",
 		HealthCheckEnabled: true,
@@ -113,7 +106,6 @@ type Provider struct {
 	mu             sync.RWMutex
 	gpuUUIDs       []string
 	initialized    bool
-	connected      bool
 	healthy        bool
 	monitorRunning bool
 
@@ -139,8 +131,8 @@ func main() {
 	// flag.Parse() is called inside parseFlags()
 
 	logger := klog.Background()
-	logger.Info("Starting NVML provider sidecar",
-		"serverAddress", cfg.ServerAddress,
+	logger.Info("Starting NVML provider",
+		"bindAddress", cfg.BindAddress,
 		"providerID", cfg.ProviderID,
 		"driverRoot", cfg.DriverRoot,
 		"healthCheckEnabled", cfg.HealthCheckEnabled,
@@ -171,8 +163,8 @@ func main() {
 func parseFlags() Config {
 	cfg := DefaultConfig()
 
-	flag.StringVar(&cfg.ServerAddress, "server-address", cfg.ServerAddress,
-		"Address of device-api-server gRPC endpoint")
+	flag.StringVar(&cfg.BindAddress, "bind-address", cfg.BindAddress,
+		"The target address of the Device API gRPC server")
 	flag.StringVar(&cfg.ProviderID, "provider-id", cfg.ProviderID,
 		"Unique identifier for this provider")
 	flag.StringVar(&cfg.DriverRoot, "driver-root", cfg.DriverRoot,
@@ -193,9 +185,9 @@ func parseFlags() Config {
 
 	// Environment variables are used as fallback when the corresponding
 	// flag was not explicitly provided on the command line.
-	if !explicitFlags["server-address"] {
-		if addr := os.Getenv("PROVIDER_SERVER_ADDRESS"); addr != "" {
-			cfg.ServerAddress = addr
+	if !explicitFlags["bind-address"] {
+		if addr := os.Getenv("NVIDIA_DEVICE_API"); addr != "" {
+			cfg.BindAddress = addr
 		}
 	}
 	if !explicitFlags["provider-id"] {
@@ -229,11 +221,10 @@ func (p *Provider) Run(ctx context.Context) error {
 	}
 	defer p.shutdownNVML()
 
-	// Connect to server with retry
-	if err := p.connectWithRetry(); err != nil {
-		return fmt.Errorf("failed to connect to server: %w", err)
+	// Initialize Device API clientset
+	if err := p.initClientset(); err != nil {
+		return fmt.Errorf("failed to create clientset: %w", err)
 	}
-	defer p.disconnect()
 
 	// Enumerate and register GPUs (or reconcile if reconnecting)
 	if err := p.enumerateAndRegisterGPUs(); err != nil {
@@ -245,10 +236,6 @@ func (p *Provider) Run(ctx context.Context) error {
 		// Reconciliation failure is not fatal - log and continue
 		p.logger.Error(err, "State reconciliation failed, continuing")
 	}
-
-	// Start heartbeat loop
-	p.wg.Add(1)
-	go p.runHeartbeatLoop()
 
 	// Start health monitoring if enabled
 	if p.config.HealthCheckEnabled && len(p.gpuUUIDs) > 0 {
@@ -312,103 +299,18 @@ func (p *Provider) shutdownNVML() {
 	p.logger.V(1).Info("NVML shutdown complete")
 }
 
+func (p *Provider) initClientset() error {
+	config := &client.Config{Target: p.config.BindAddress}
 
-// isLocalhostAddress returns true if the address refers to the local machine.
-func isLocalhostAddress(addr string) bool {
-	// Unix socket paths are inherently local.
-	if strings.HasPrefix(addr, "unix://") || strings.HasPrefix(addr, "/") {
-		return true
-	}
-	host := addr
-	if h, _, err := net.SplitHostPort(addr); err == nil {
-		host = h
-	}
-	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == ""
-}
-
-// connectWithRetry connects to the device-api-server with retry logic.
-func (p *Provider) connectWithRetry() error {
-	// Validate that ServerAddress is localhost when using insecure credentials.
-	// This prevents accidental exposure of unencrypted gRPC traffic over the network.
-	if !isLocalhostAddress(p.config.ServerAddress) {
-		return fmt.Errorf("insecure credentials require localhost address, got %q; "+
-			"set --server-address to localhost:<port> or use TLS", p.config.ServerAddress)
-	}
-
-	var lastErr error
-
-	for i := 0; i < MaxConnectionRetries; i++ {
-		select {
-		case <-p.ctx.Done():
-			return p.ctx.Err()
-		default:
-		}
-
-		// Insecure credentials are acceptable here: the provider connects to
-		// device-api-server via localhost within the same pod (sidecar pattern).
-		conn, err := grpc.NewClient(
-			p.config.ServerAddress,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
-		if err != nil {
-			lastErr = err
-			p.logger.V(1).Info("Connection attempt failed, retrying",
-				"attempt", i+1,
-				"error", err,
-			)
-			time.Sleep(ConnectionRetryInterval)
-			continue
-		}
-
-		p.conn = conn
-		cs := clientset.New(conn)
-		p.gpuClient = cs.DeviceV1alpha1().GPUs()
-		p.healthClient = grpc_health_v1.NewHealthClient(conn)
-
-		// Wait for server to be ready
-		if err := p.waitForServerReady(); err != nil {
-			conn.Close()
-			lastErr = err
-			p.logger.V(1).Info("Server not ready, retrying",
-				"attempt", i+1,
-				"error", err,
-			)
-			time.Sleep(ConnectionRetryInterval)
-			continue
-		}
-
-		p.connected = true
-		p.logger.Info("Connected to device-api-server", "address", p.config.ServerAddress)
-		return nil
-	}
-
-	return fmt.Errorf("failed to connect after %d attempts: %w", MaxConnectionRetries, lastErr)
-}
-
-// waitForServerReady waits for the server to report healthy.
-func (p *Provider) waitForServerReady() error {
-	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Second)
-	defer cancel()
-
-	resp, err := p.healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	clientset, err := device.NewForConfig(config)
 	if err != nil {
-		return fmt.Errorf("health check failed: %w", err)
+		return err
 	}
+	defer clientset.Close()
 
-	if resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-		return fmt.Errorf("server not serving: %v", resp.Status)
-	}
+	p.gpuClient = clientset.DeviceV1alpha1().GPUs()
 
 	return nil
-}
-
-// disconnect closes the gRPC connection.
-func (p *Provider) disconnect() {
-	if p.conn != nil {
-		p.conn.Close()
-		p.conn = nil
-	}
-	p.connected = false
 }
 
 // enumerateAndRegisterGPUs discovers GPUs via NVML and registers them.
@@ -491,49 +393,6 @@ func (p *Provider) registerGPU(uuid, productName string, memoryBytes uint64) err
 
 	_, err := p.gpuClient.Create(ctx, gpu, metav1.CreateOptions{})
 	return err
-}
-
-// runHeartbeatLoop sends periodic heartbeats to the server.
-func (p *Provider) runHeartbeatLoop() {
-	defer p.wg.Done()
-
-	ticker := time.NewTicker(HeartbeatInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		case <-ticker.C:
-			if err := p.sendHeartbeat(); err != nil {
-				p.logger.Error(err, "Failed to send heartbeat")
-			}
-		}
-	}
-}
-
-// sendHeartbeat performs a health check on the server connection.
-// Note: The Heartbeat RPC was removed. We now just verify the server is reachable.
-func (p *Provider) sendHeartbeat() error {
-	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Second)
-	defer cancel()
-
-	// Verify server connectivity by checking gRPC health
-	resp, err := p.healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
-	if err != nil {
-		return err
-	}
-
-	if resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-		return fmt.Errorf("server not serving: %v", resp.Status)
-	}
-
-	p.mu.RLock()
-	gpuCount := len(p.gpuUUIDs)
-	p.mu.RUnlock()
-
-	p.logger.V(4).Info("Health check passed", "gpuCount", gpuCount)
-	return nil
 }
 
 // runHealthMonitor monitors NVML events for GPU health changes.
@@ -723,4 +582,3 @@ func (p *Provider) setHealthy(healthy bool) {
 	p.healthy = healthy
 	p.mu.Unlock()
 }
-
