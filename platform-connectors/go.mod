@@ -8,6 +8,7 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/google/cel-go v0.28.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/nvidia/device-api v0.0.0-00010101000000-000000000000
 	github.com/nvidia/nvsentinel/commons v0.0.0
 	github.com/nvidia/nvsentinel/data-models v0.0.0
 	github.com/prometheus/client_golang v1.23.2
@@ -20,7 +21,7 @@ require (
 	k8s.io/api v0.35.3
 	k8s.io/apimachinery v0.35.3
 	k8s.io/client-go v0.35.3
-	sigs.k8s.io/controller-runtime v0.22.4
+	sigs.k8s.io/controller-runtime v0.23.3
 )
 
 require (
@@ -28,6 +29,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/XSAM/otelsql v0.42.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
+	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -48,6 +50,8 @@ require (
 	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+	k8s.io/apiserver v0.35.3 // indirect
+	k8s.io/component-base v0.35.3 // indirect
 )
 
 require (
@@ -72,7 +76,6 @@ require (
 	github.com/go-openapi/swag/stringutils v0.25.4 // indirect
 	github.com/go-openapi/swag/typeutils v0.25.4 // indirect
 	github.com/go-openapi/swag/yamlutils v0.25.4 // indirect
-	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -107,13 +110,13 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.34.3 // indirect
-	k8s.io/klog/v2 v2.130.1 // indirect
+	k8s.io/apiextensions-apiserver v0.35.0 // indirect
+	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20251125145642-4e65d59e963e // indirect
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.1 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.3.2-0.20260122202528-d9cc6641c482 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
@@ -123,3 +126,6 @@ replace github.com/nvidia/nvsentinel/data-models => ../data-models
 replace github.com/nvidia/nvsentinel/store-client => ../store-client
 
 replace github.com/nvidia/nvsentinel/commons => ../commons
+
+// deleteme
+replace github.com/nvidia/device-api => ../../device-api
