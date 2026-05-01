@@ -17,17 +17,20 @@ package device
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math/bits"
+	rand "math/rand/v2"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
+	"github.com/nvidia/device-api/api/device/v1alpha1"
 	deviceset "github.com/nvidia/device-api/client-go/clientset/device"
+	"github.com/nvidia/nvsentinel/commons/pkg/eventutil"
 	pb "github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	"github.com/nvidia/nvsentinel/platform-connectors/pkg/ringbuffer"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -73,8 +76,6 @@ func InitializeConnector(
 }
 
 // FetchAndProcessHealthMetric runs the main event loop, dequeuing health metrics and patching GPU status.
-//
-// nolint:cyclop,gocognit,nestif // Complexity due to inline timestamp windowing for rich error logging
 func (r *DeviceConnector) FetchAndProcessHealthMetric(ctx context.Context) {
 	for {
 		select {
@@ -97,47 +98,24 @@ func (r *DeviceConnector) FetchAndProcessHealthMetric(ctx context.Context) {
 
 			if err := r.processHealthEvents(ctx, healthEvents); err != nil {
 				events := healthEvents.GetEvents()
-				count := len(events)
-
 				logFields := []any{
 					"connector", connectorName,
 					"error", err,
-					"event_count", count,
+					"count", len(events),
 					"version", healthEvents.GetVersion(),
 				}
-				if count > 0 {
-					var minTSPtr, maxTSPtr *timestamppb.Timestamp
 
-					var minTime, maxTime time.Time
-
-					for _, e := range events {
-						ts := e.GetGeneratedTimestamp()
-						if ts == nil {
-							continue
-						}
-
-						currentTime := ts.AsTime()
-
-						if minTSPtr == nil || currentTime.Before(minTime) {
-							minTime = currentTime
-							minTSPtr = ts
-						}
-
-						if maxTSPtr == nil || currentTime.After(maxTime) {
-							maxTime = currentTime
-							maxTSPtr = ts
-						}
-					}
-
-					if minTSPtr != nil && maxTSPtr != nil {
-						logFields = append(logFields,
-							"window_start", minTime.Format(time.RFC3339),
-							"window_end", maxTime.Format(time.RFC3339),
-						)
-					}
+				if start, end, ok := eventutil.GetWindow(events); ok {
+					logFields = append(logFields, "window_start", start, "window_end", end)
 				}
 
 				slog.ErrorContext(ctx, "Failed to process health events", logFields...)
+
+				slog.DebugContext(ctx, "Health event payload",
+					"version", healthEvents.GetVersion(),
+					"events", events,
+				)
+
 				r.ringBuffer.HealthMetricEleProcessingFailed(queued)
 			} else {
 				r.ringBuffer.HealthMetricEleProcessingCompleted(queued)
@@ -153,6 +131,7 @@ func (r *DeviceConnector) processHealthEvents(ctx context.Context, healthEvents 
 		if event.ProcessingStrategy == pb.ProcessingStrategy_STORE_ONLY {
 			slog.InfoContext(ctx, "Skipping health event: store only",
 				"connector", connectorName,
+				"node", event.GetNodeName(),
 				"event_id", event.GetId(),
 				"checkName", event.GetCheckName(),
 				"agent", event.GetAgent(),
@@ -168,6 +147,7 @@ func (r *DeviceConnector) processHealthEvents(ctx context.Context, healthEvents 
 				if name == "" {
 					slog.WarnContext(ctx, "Skipping health event: empty entity value",
 						"connector", connectorName,
+						"node", event.GetNodeName(),
 						"event_id", event.GetId(),
 						"checkName", event.GetCheckName(),
 						"agent", event.GetAgent(),
@@ -184,57 +164,64 @@ func (r *DeviceConnector) processHealthEvents(ctx context.Context, healthEvents 
 		}
 	}
 
-	var firstErr error
+	gpuCount := len(eventsByGPU)
+
+	var errs error
 
 	for name, events := range eventsByGPU {
+		if gpuCount > 1 {
+			// We delay the execution by a random duration to prevent
+			// thundering herd issues against the API server.
+			r.applyJitter(gpuCount)
+		}
+
 		if err := r.processGPUEvents(ctx, name, events); err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
+			errs = errors.Join(errs, err)
 		}
 	}
 
-	return firstErr
+	return errs
 }
 
-type statusPatch struct {
-	Status struct {
-		Conditions []metav1.Condition `json:"conditions"`
-		// TODO(pteranodan): Change *string once GPUStatus.RecommendedAction is *string.
-		RecommendedAction string `json:"recommendedAction,omitempty"`
-	} `json:"status"`
+// applyJitter delays execution by a random duration.
+// The jitter window scales logarithmically with the count.
+func (r *DeviceConnector) applyJitter(count int) {
+	if count <= 1 {
+		return
+	}
+
+	// By using bits.Len(count) as the shift, the jitter window doubles as the
+	// request count doubles, which keeps the total request density stable.
+	shift := bits.Len(uint(count))
+	if shift > 10 {
+		shift = 10 // Cap at ~1ms to keep responsiveness.
+	}
+
+	mask := uint32((1 << shift) - 1)
+
+	// We use a bitwise AND with a mask for a zero-allocation random duration
+	// in the range of [0, 2^shift - 1] microseconds.
+	// #nosec G404 // crypto/rand is unnecessary for jitter
+	delay := time.Duration(rand.Uint32()&mask) * time.Microsecond
+
+	// Ensure the delay is interruptible to prevent hanging during connector shutdown.
+	select {
+	case <-time.After(delay):
+	case <-r.stopCh:
+	case <-r.ctx.Done():
+	}
 }
 
-// nolint:cyclop,gocognit // Pipeline for sorting, deduplicating, and mapping events
 func (r *DeviceConnector) processGPUEvents(ctx context.Context, name string, events []*pb.HealthEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
 
-	sortedEvents := slices.Clone(events)
-	slices.SortFunc(sortedEvents, func(a, b *pb.HealthEvent) int {
-		ta := a.GetGeneratedTimestamp()
-		tb := b.GetGeneratedTimestamp()
-
-		if ta == nil && tb == nil {
-			return 0
-		}
-
-		if ta == nil {
-			return -1
-		}
-
-		if tb == nil {
-			return 1
-		}
-
-		return ta.AsTime().Compare(tb.AsTime())
-	})
-
-	var latestEvent *pb.HealthEvent
-
 	latestByCheck := make(map[string]*pb.HealthEvent)
 
+	var latest *pb.HealthEvent
+
+	sortedEvents := eventutil.SortByAge(events)
 	for _, event := range sortedEvents {
 		checkName := event.GetCheckName()
 		if checkName == "" {
@@ -251,54 +238,22 @@ func (r *DeviceConnector) processGPUEvents(ctx context.Context, name string, eve
 		}
 
 		latestByCheck[checkName] = event
-		latestEvent = event
+		latest = event
 	}
 
 	var conditionsToPatch []metav1.Condition
 
-	const maxMsgLen = 1024 // 1KB limit
+	now := time.Now()
 
-	const truncationSuffix = "... [truncated]"
-
-	for checkName, latest := range latestByCheck {
-		status := metav1.ConditionFalse
-		reason := fmt.Sprintf("%sIsHealthy", checkName)
-
-		if !latest.IsHealthy {
-			status = metav1.ConditionTrue
-			reason = fmt.Sprintf("%sIsNotHealthy", checkName)
-		}
-
-		var transitionTime metav1.Time
-		if eventTimestamp := latest.GetGeneratedTimestamp(); eventTimestamp != nil {
-			transitionTime = metav1.NewTime(eventTimestamp.AsTime())
-		} else {
-			transitionTime = metav1.Now()
-		}
-
-		message := latest.GetMessage()
-		if message == "" {
-			if len(latest.GetErrorCode()) > 0 {
-				message = "ErrorCodes: " + strings.Join(latest.GetErrorCode(), ", ")
-			} else {
-				message = "None"
-			}
-		}
-
-		if len(message) > maxMsgLen {
-			if maxMsgLen > len(truncationSuffix) {
-				message = message[:maxMsgLen-len(truncationSuffix)] + truncationSuffix
-			} else {
-				message = message[:maxMsgLen]
-			}
-		}
+	for checkName, event := range latestByCheck {
+		status := eventutil.GetConditionStatus(event)
 
 		conditionsToPatch = append(conditionsToPatch, metav1.Condition{
 			Type:               checkName,
 			Status:             status,
-			Reason:             reason,
-			Message:            message,
-			LastTransitionTime: transitionTime,
+			Reason:             eventutil.GetReason(event),
+			Message:            eventutil.GetMessage(event, 1024), // 1KB limit
+			LastTransitionTime: metav1.NewTime(eventutil.GetTime(event, now)),
 		})
 	}
 
@@ -306,21 +261,16 @@ func (r *DeviceConnector) processGPUEvents(ctx context.Context, name string, eve
 		return nil
 	}
 
-	p := statusPatch{}
-	p.Status.Conditions = conditionsToPatch
-
-	if latestEvent != nil {
-		action := latestEvent.GetRecommendedAction()
-		if action != pb.RecommendedAction_NONE && action != pb.RecommendedAction_UNKNOWN {
-			p.Status.RecommendedAction = action.String()
-		} else {
-			// TODO(pteranodan): Remove "None" once RecommendedAction is a *string.
-			// Strategic Merge Patch skips "" due to omitempty, leaving stale data.
-			p.Status.RecommendedAction = "None"
-		}
+	status := v1alpha1.GPUStatus{
+		Conditions:        conditionsToPatch,
+		RecommendedAction: eventutil.GetRecommendedAction(latest),
 	}
 
-	bytes, err := json.Marshal(p)
+	patch := struct {
+		Status v1alpha1.GPUStatus `json:"status"`
+	}{Status: status}
+
+	patchBytes, err := json.Marshal(patch)
 	if err != nil {
 		return fmt.Errorf("failed to marshal status patch for GPU %q: %w", name, err)
 	}
@@ -328,7 +278,7 @@ func (r *DeviceConnector) processGPUEvents(ctx context.Context, name string, eve
 	_, err = r.clientset.DeviceV1alpha1().GPUs().Patch(ctx,
 		name,
 		types.StrategicMergePatchType,
-		bytes,
+		patchBytes,
 		metav1.PatchOptions{},
 		"status",
 	)

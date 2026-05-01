@@ -289,6 +289,11 @@ platformConnector:
     # Burst: Maximum burst size above QPS
     burst: 10
 
+  # NVIDIA Device API connector configuration
+  # Handles updating Device (like GPU) status and conditions
+  deviceConnector:
+    enabled: false
+
   # Health event transformers pipeline
   # Transformers process health events before storage and propagation
   # They execute in the order specified in the pipeline

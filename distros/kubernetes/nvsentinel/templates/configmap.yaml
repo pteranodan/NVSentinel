@@ -36,6 +36,7 @@ data:
       {{- with .Values.platformConnector.pipeline }}
       ,"pipeline": {{ . | toJson }}
       {{- end }}
+      ,"enableDevicePlatformConnector": "{{ .Values.platformConnector.deviceConnector.enabled }}"
     }
   {{- if .Values.platformConnector.transformers.MetadataAugmentor }}
   metadata.toml: |

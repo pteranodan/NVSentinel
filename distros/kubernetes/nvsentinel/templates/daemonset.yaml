@@ -46,6 +46,9 @@ spec:
       securityContext:
         fsGroup: 65532
       {{- end }}
+      {{- if .Values.platformConnector.deviceConnector.enabled }}
+        supplementalGroups: [5000]
+      {{- end }}
       {{- if or .Values.global.auditLogging.enabled (and .Values.global.datastore (eq .Values.global.datastore.provider "postgresql")) }}
       initContainers:
         {{- if .Values.global.auditLogging.enabled }}
@@ -85,6 +88,9 @@ spec:
           imagePullPolicy: {{ .Values.platformConnector.image.pullPolicy }}
           securityContext:
             runAsUser: 0
+            {{- if .Values.platformConnector.deviceConnector.enabled }}
+            runAsGroup: 5000
+            {{- end }}
             capabilities:
               drop:
               - ALL
@@ -143,6 +149,10 @@ spec:
             {{- if .Values.global.auditLogging.enabled }}
             {{- include "nvsentinel.auditLogging.volumeMount" . | nindent 12 }}
             {{- end }}
+            {{- if .Values.platformConnector.deviceConnector.enabled }}
+            - name: run-device-api
+              mountPath: /var/run/nvidia-device-api
+            {{- end }}
           env:
             - name: NODE_NAME
               valueFrom:
@@ -174,6 +184,10 @@ spec:
             - name: OTEL_EXPORTER_OTLP_INSECURE
               value: {{ .Values.global.tracing.insecure | quote }}
             {{- end }}
+            {{- if .Values.platformConnector.deviceConnector.enabled }}
+            - name: NVIDIA_DEVICE_API_PATH
+              value: /var/run/nvidia-device-api/api.sock
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ if .Values.global.datastore }}{{ .Release.Name }}-datastore-config{{ else }}mongodb-config{{ end }}
@@ -199,6 +213,12 @@ spec:
         {{- end }}
         {{- if .Values.global.auditLogging.enabled }}
         {{- include "nvsentinel.auditLogging.volume" . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.platformConnector.deviceConnector.enabled }}
+        - name: run-device-api
+          hostPath:
+            path: /var/run/nvidia-device-api
+            type: DirectoryOrCreate
         {{- end }}
       {{- with (.Values.global.tolerations | default .Values.platformConnector.tolerations) }}
       tolerations:

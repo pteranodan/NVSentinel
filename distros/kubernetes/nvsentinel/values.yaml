@@ -238,6 +238,11 @@ platformConnector:
     qps: 5.0
     burst: 10
 
+  # NVIDIA Device API connector configuration
+  # Handles updating Device (like GPU) status and conditions
+  deviceConnector:
+    enabled: false
+
   # Node metadata enrichment configuration
   # Health event transformers pipeline
   pipeline:

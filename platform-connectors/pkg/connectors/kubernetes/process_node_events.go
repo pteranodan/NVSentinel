@@ -34,12 +34,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 
+	"github.com/nvidia/nvsentinel/commons/pkg/eventutil"
 	"github.com/nvidia/nvsentinel/commons/pkg/tracing"
 	"github.com/nvidia/nvsentinel/data-models/pkg/protos"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
+	connectorName           = "k8s"
 	DefaultNamespace        = "default"
 	NoHealthFailureMsg      = "No Health Failures"
 	truncationSuffix        = "..."
@@ -54,7 +55,7 @@ func (r *K8sConnector) updateNodeConditions(ctx context.Context, healthEvents []
 		nodeName = healthEvents[0].NodeName
 	}
 
-	sortedHealthEvents := sortHealthEventsByTimestamp(healthEvents)
+	sortedHealthEvents := eventutil.SortByAge(healthEvents)
 	conditionEventsMap := buildConditionEventsMap(sortedHealthEvents)
 
 	if len(conditionEventsMap) == 0 {
@@ -87,7 +88,7 @@ func (r *K8sConnector) updateNodeConditions(ctx context.Context, healthEvents []
 		}
 
 		for conditionType, events := range conditionEventsMap {
-			r.processNodeCondition(ctx, node, conditionType, events)
+			r.processNodeCondition(node, conditionType, events)
 		}
 
 		_, err = r.clientset.CoreV1().Nodes().UpdateStatus(ctx, node, metav1.UpdateOptions{})
@@ -107,6 +108,7 @@ func (r *K8sConnector) updateNodeConditions(ctx context.Context, healthEvents []
 		)
 
 		slog.ErrorContext(ctx, "Failed to update node conditions",
+			"connector", connectorName,
 			"node", nodeName,
 			"conditionTypes", conditionTypes,
 			"error", err)
@@ -115,31 +117,6 @@ func (r *K8sConnector) updateNodeConditions(ctx context.Context, healthEvents []
 	}
 
 	return true, nil
-}
-
-func sortHealthEventsByTimestamp(events []*protos.HealthEvent) []*protos.HealthEvent {
-	sorted := slices.Clone(events)
-
-	slices.SortFunc(sorted, func(a, b *protos.HealthEvent) int {
-		ti := a.GeneratedTimestamp
-		tj := b.GeneratedTimestamp
-
-		if ti == nil && tj == nil {
-			return 0
-		}
-
-		if ti == nil {
-			return -1
-		}
-
-		if tj == nil {
-			return 1
-		}
-
-		return ti.AsTime().Compare(tj.AsTime())
-	})
-
-	return sorted
 }
 
 func buildConditionEventsMap(events []*protos.HealthEvent) map[corev1.NodeConditionType][]*protos.HealthEvent {
@@ -158,15 +135,18 @@ func buildConditionEventsMap(events []*protos.HealthEvent) map[corev1.NodeCondit
 }
 
 func (r *K8sConnector) processNodeCondition(
-	ctx context.Context, node *corev1.Node,
-	conditionType corev1.NodeConditionType, events []*protos.HealthEvent,
+	node *corev1.Node,
+	conditionType corev1.NodeConditionType,
+	events []*protos.HealthEvent,
 ) {
 	if len(events) == 0 {
 		return
 	}
 
+	now := time.Now()
+
 	latestEvent := events[len(events)-1]
-	latestTime := metav1.NewTime(safeTimestamp(ctx, latestEvent.GeneratedTimestamp))
+	latestTime := metav1.NewTime(eventutil.GetTime(latestEvent, now))
 
 	matchedCondition, conditionIndex, conditionExists := findNodeCondition(node, conditionType)
 
@@ -182,16 +162,18 @@ func (r *K8sConnector) processNodeCondition(
 	messages = r.aggregateEventMessages(messages, events)
 
 	if len(messages) > 0 {
-		message := r.truncateNodeConditionMessage(messages)
-		matchedCondition.Message = message
-
-		matchedCondition.Status = corev1.ConditionTrue
-		matchedCondition.Reason = r.updateHealthEventReason(latestEvent.CheckName, false)
+		matchedCondition.Message = r.truncateNodeConditionMessage(messages)
 	} else {
 		matchedCondition.Message = NoHealthFailureMsg
-		matchedCondition.Status = corev1.ConditionFalse
-		matchedCondition.Reason = r.updateHealthEventReason(latestEvent.CheckName, true)
 	}
+
+	summaryEvent := &protos.HealthEvent{
+		CheckName: latestEvent.CheckName,
+		IsHealthy: len(messages) == 0,
+	}
+
+	matchedCondition.Status = eventutil.GetNodeConditionStatus(summaryEvent)
+	matchedCondition.Reason = eventutil.GetReason(summaryEvent)
 
 	matchedCondition.LastHeartbeatTime = latestTime
 
@@ -206,16 +188,6 @@ func (r *K8sConnector) processNodeCondition(
 	} else {
 		node.Status.Conditions = append(node.Status.Conditions, matchedCondition)
 	}
-}
-
-func safeTimestamp(ctx context.Context, ts *timestamppb.Timestamp) time.Time {
-	if ts == nil {
-		slog.WarnContext(ctx, "HealthEvent has nil GeneratedTimestamp, falling back to current time")
-
-		return time.Now()
-	}
-
-	return ts.AsTime()
 }
 
 func findNodeCondition(node *corev1.Node,
@@ -265,13 +237,11 @@ func parseMessages(message string) []string {
 func (r *K8sConnector) addMessageIfNotExist(messages []string, healthEvent *protos.HealthEvent) []string {
 	newMessage := r.constructHealthEventMessage(healthEvent)
 
-	for _, msg := range messages {
-		if fmt.Sprintf("%s;", msg) == newMessage {
-			return messages
-		}
+	if slices.Contains(messages, newMessage) {
+		return messages
 	}
 
-	return append(messages, newMessage[:len(newMessage)-1])
+	return append(messages, newMessage)
 }
 
 // extractMessageIdentity parses ErrorCodes, entity tokens (GPU, PCI, GPU_UUID),
@@ -443,15 +413,6 @@ func (r *K8sConnector) writeNodeEvent(ctx context.Context, event *corev1.Event, 
 	return err
 }
 
-func (r *K8sConnector) updateHealthEventReason(checkName string, isHealthy bool) string {
-	status := "IsNotHealthy"
-	if isHealthy {
-		status = "IsHealthy"
-	}
-
-	return fmt.Sprintf("%s%s", checkName, status)
-}
-
 func (r *K8sConnector) fetchHealthEventMessage(healthEvent *protos.HealthEvent) string {
 	message := ""
 
@@ -465,25 +426,28 @@ func (r *K8sConnector) fetchHealthEventMessage(healthEvent *protos.HealthEvent) 
 }
 
 func (r *K8sConnector) constructHealthEventMessage(healthEvent *protos.HealthEvent) string {
-	message := ""
+	var parts []string
 
 	for _, errorCode := range healthEvent.ErrorCode {
-		message += fmt.Sprintf("ErrorCode:%s ", errorCode)
+		parts = append(parts, fmt.Sprintf("ErrorCode:%s", errorCode))
 	}
 
 	for _, entity := range healthEvent.EntitiesImpacted {
-		message += fmt.Sprintf("%s:%s ", entity.EntityType, entity.EntityValue)
+		parts = append(parts, fmt.Sprintf("%s:%s", entity.EntityType, entity.EntityValue))
 	}
 
 	if healthEvent.Message != "" {
 		// Replace semicolons with dots in the message to prevent delimiter collision
 		sanitizedMessage := strings.ReplaceAll(healthEvent.Message, ";", ".")
-		message += fmt.Sprintf("%s ", sanitizedMessage)
+		parts = append(parts, sanitizedMessage)
 	}
 
-	message += fmt.Sprintf("Recommended Action=%s;", healthEvent.RecommendedAction.String())
+	// Only include if there is an actionable recommendation
+	if rec := eventutil.GetRecommendedAction(healthEvent); rec != nil {
+		parts = append(parts, fmt.Sprintf("Recommended Action=%s", *rec))
+	}
 
-	return message
+	return strings.Join(parts, " ")
 }
 
 // filterProcessableEvents filters out STORE_ONLY events that should not create node conditions or K8s events.
@@ -492,10 +456,14 @@ func filterProcessableEvents(ctx context.Context, healthEvents *protos.HealthEve
 
 	for _, healthEvent := range healthEvents.Events {
 		if healthEvent.ProcessingStrategy == protos.ProcessingStrategy_STORE_ONLY {
-			slog.InfoContext(ctx, "Skipping STORE_ONLY health event (no node conditions / node events)",
-				"node", healthEvent.NodeName,
-				"checkName", healthEvent.CheckName,
-				"agent", healthEvent.Agent)
+			slog.InfoContext(ctx, "Skipping health event: store only",
+				"connector", connectorName,
+				"node", healthEvent.GetNodeName(),
+				"event_id", healthEvent.GetId(),
+				"checkName", healthEvent.GetCheckName(),
+				"agent", healthEvent.GetAgent(),
+				"skipped", true,
+				"storeOnly", true)
 
 			continue
 		}
@@ -507,8 +475,17 @@ func filterProcessableEvents(ctx context.Context, healthEvents *protos.HealthEve
 }
 
 // createK8sEvent creates a Kubernetes event from a health event.
-func (r *K8sConnector) createK8sEvent(ctx context.Context, healthEvent *protos.HealthEvent) *corev1.Event {
-	ts := safeTimestamp(ctx, healthEvent.GeneratedTimestamp)
+func (r *K8sConnector) createK8sEvent(healthEvent *protos.HealthEvent) *corev1.Event {
+	ts := eventutil.GetTime(healthEvent, time.Now())
+
+	status := eventutil.GetConditionStatus(healthEvent)
+
+	var eventType string
+	if status == metav1.ConditionFalse {
+		eventType = corev1.EventTypeNormal
+	} else {
+		eventType = corev1.EventTypeWarning
+	}
 
 	return &corev1.Event{
 		ObjectMeta: metav1.ObjectMeta{
@@ -520,7 +497,7 @@ func (r *K8sConnector) createK8sEvent(ctx context.Context, healthEvent *protos.H
 			Name: healthEvent.NodeName,
 			UID:  types.UID(healthEvent.NodeName),
 		},
-		Reason:              r.updateHealthEventReason(healthEvent.CheckName, healthEvent.IsHealthy),
+		Reason:              eventutil.GetReason(healthEvent),
 		ReportingController: healthEvent.Agent,
 		ReportingInstance:   healthEvent.NodeName,
 		Message:             r.fetchHealthEventMessage(healthEvent),
@@ -531,7 +508,7 @@ func (r *K8sConnector) createK8sEvent(ctx context.Context, healthEvent *protos.H
 		},
 		FirstTimestamp: metav1.NewTime(ts),
 		LastTimestamp:  metav1.NewTime(ts),
-		Type:           healthEvent.CheckName,
+		Type:           eventType,
 	}
 }
 
@@ -547,13 +524,11 @@ func (r *K8sConnector) processHealthEvents(ctx context.Context, healthEvents *pr
 
 	eventsByNode := groupEventsByNode(processableEvents)
 
-	var firstErr error
+	var errs error
 
 	for _, nodeEvents := range eventsByNode {
 		if err := r.processNodeConditionUpdates(ctx, nodeEvents); err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
+			errs = errors.Join(errs, err)
 
 			span.AddEvent("platform_connector.k8s.node_condition_update_error", trace.WithAttributes(
 				attribute.String("platform_connector.k8s.error.type", "node_condition_update_error"),
@@ -565,14 +540,12 @@ func (r *K8sConnector) processHealthEvents(ctx context.Context, healthEvents *pr
 	for _, healthEvent := range processableEvents {
 		if !healthEvent.IsHealthy && !healthEvent.IsFatal {
 			start := time.Now()
-			err := r.writeNodeEvent(ctx, r.createK8sEvent(ctx, healthEvent), healthEvent.NodeName)
+			err := r.writeNodeEvent(ctx, r.createK8sEvent(healthEvent), healthEvent.NodeName)
 
 			nodeEventUpdateCreateDuration.Observe(float64(time.Since(start).Milliseconds()))
 
 			if err != nil {
-				if firstErr == nil {
-					firstErr = fmt.Errorf("failed to write node event for %s: %w", healthEvent.NodeName, err)
-				}
+				errs = errors.Join(errs, fmt.Errorf("failed to write node event for %s: %w", healthEvent.NodeName, err))
 
 				span.AddEvent("platform_connector.k8s.node_event_write_failed", trace.WithAttributes(
 					attribute.String("platform_connector.k8s.error.type", "node_event_write_failed"),
@@ -582,7 +555,7 @@ func (r *K8sConnector) processHealthEvents(ctx context.Context, healthEvents *pr
 		}
 	}
 
-	return firstErr
+	return errs
 }
 
 func groupEventsByNode(events []*protos.HealthEvent) map[string][]*protos.HealthEvent {
@@ -858,8 +831,6 @@ func (r *K8sConnector) truncateNodeConditionMessage(messages []string) string {
 		result.WriteString(separator)
 		result.WriteString(msg)
 	}
-
-	result.WriteString(";")
 
 	if truncated {
 		result.WriteString(truncationSuffix)

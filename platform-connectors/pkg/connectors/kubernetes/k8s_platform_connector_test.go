@@ -67,6 +67,7 @@ type healthConditionList struct {
 	ExpectedOutputMessage       string
 	ExpectedHealthFailureStatus string
 	ExpectedOutputConditionType string
+	ExpectedOutputEventType     string
 }
 
 func getNode() *corev1.Node {
@@ -178,7 +179,7 @@ func TestK8sNodeConditions(t *testing.T) {
 				Message:            "Pcie error on GPU 0",
 				NodeName:           "testnode",
 			},
-			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_PCI_REPLAY_RATE GPU:0 Pcie error on GPU 0 Recommended Action=UNKNOWN;",
+			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_PCI_REPLAY_RATE GPU:0 Pcie error on GPU 0",
 			ExpectedOutputReason:        "GpuPcieWatchIsNotHealthy",
 			ExpectedOutputConditionType: "GpuPcieWatch",
 			ExpectedHealthFailureStatus: "True",
@@ -196,7 +197,7 @@ func TestK8sNodeConditions(t *testing.T) {
 				RecommendedAction:  protos.RecommendedAction_CONTACT_SUPPORT,
 				NodeName:           "testnode",
 			},
-			ExpectedOutputMessage:       "ErrorCode:44 GPU:0 Recommended Action=CONTACT_SUPPORT;",
+			ExpectedOutputMessage:       "ErrorCode:44 GPU:0 Recommended Action=CONTACT_SUPPORT",
 			ExpectedOutputReason:        "GpuXidErrorIsNotHealthy",
 			ExpectedOutputConditionType: "GpuXidError",
 			ExpectedHealthFailureStatus: "True",
@@ -214,7 +215,7 @@ func TestK8sNodeConditions(t *testing.T) {
 				RecommendedAction:  protos.RecommendedAction_NONE,
 				NodeName:           "testnode",
 			},
-			ExpectedOutputMessage:       "ErrorCode:44 GPU:0 Recommended Action=CONTACT_SUPPORT;ErrorCode:45 GPU:0 Recommended Action=NONE;",
+			ExpectedOutputMessage:       "ErrorCode:44 GPU:0 Recommended Action=CONTACT_SUPPORT;ErrorCode:45 GPU:0",
 			ExpectedOutputReason:        "GpuXidErrorIsNotHealthy",
 			ExpectedOutputConditionType: "GpuXidError",
 			ExpectedHealthFailureStatus: "True",
@@ -232,7 +233,7 @@ func TestK8sNodeConditions(t *testing.T) {
 				Message:            "Thermal watch error on GPU 0",
 				NodeName:           "testnode",
 			},
-			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_CLOCK_THROTTLE_THERMAL GPU:0 Thermal watch error on GPU 0 Recommended Action=UNKNOWN;",
+			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_CLOCK_THROTTLE_THERMAL GPU:0 Thermal watch error on GPU 0",
 			ExpectedOutputReason:        "GpuThermalWatchIsNotHealthy",
 			ExpectedOutputConditionType: "GpuThermalWatch",
 			ExpectedHealthFailureStatus: "True",
@@ -297,9 +298,10 @@ func TestK8sNodeEvents(t *testing.T) {
 				RecommendedAction:  protos.RecommendedAction_UNKNOWN,
 				Message:            "PCI Replay Rate error on GPU 0",
 			},
-			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_PCI_REPLAY_RATE GPU:0 PCI Replay Rate error on GPU 0 Recommended Action=UNKNOWN;",
+			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_PCI_REPLAY_RATE GPU:0 PCI Replay Rate error on GPU 0",
 			ExpectedOutputReason:        "GpuPcieWatchIsNotHealthy",
 			ExpectedOutputConditionType: "GpuPcieWatch",
+			ExpectedOutputEventType:     corev1.EventTypeWarning,
 		},
 		{
 			healthEvent: &protos.HealthEvent{
@@ -314,9 +316,10 @@ func TestK8sNodeEvents(t *testing.T) {
 				Message:            "Thermal error on GPU 0",
 				NodeName:           "testnode",
 			},
-			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_CLOCK_THROTTLE_THERMAL GPU:0 Thermal error on GPU 0 Recommended Action=UNKNOWN;",
+			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_CLOCK_THROTTLE_THERMAL GPU:0 Thermal error on GPU 0",
 			ExpectedOutputReason:        "GpuThermalWatchIsNotHealthy",
 			ExpectedOutputConditionType: "GpuThermalWatch",
+			ExpectedOutputEventType:     corev1.EventTypeWarning,
 		},
 		{
 			healthEvent: &protos.HealthEvent{
@@ -331,9 +334,10 @@ func TestK8sNodeEvents(t *testing.T) {
 				Message:            "Thermal error on GPU 0",
 				NodeName:           "testnode",
 			},
-			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_CLOCK_THROTTLE_THERMAL GPU:0 Thermal error on GPU 0 Recommended Action=UNKNOWN;",
+			ExpectedOutputMessage:       "ErrorCode:DCGM_FR_CLOCK_THROTTLE_THERMAL GPU:0 Thermal error on GPU 0",
 			ExpectedOutputReason:        "GpuThermalWatchIsNotHealthy",
 			ExpectedOutputConditionType: "GpuThermalWatch",
+			ExpectedOutputEventType:     corev1.EventTypeWarning,
 		},
 	}
 	fakeNode := getNode()
@@ -356,20 +360,20 @@ func TestK8sNodeEvents(t *testing.T) {
 	})
 
 	for testCase, healthEvent := range healthEventsList {
-		conditionFound := false
+		found := false
 		for _, event := range events.Items {
-			if event.Type == healthEvent.ExpectedOutputConditionType {
-				conditionFound = true
+			if event.Reason == healthEvent.ExpectedOutputReason {
+				found = true
 
-				if healthEvent.ExpectedOutputMessage != string(event.Message) {
-					t.Errorf("Testcase %d. Node event Message  %s is not matching with expectedEventMessage %s", testCase, string(event.Message), healthEvent.ExpectedOutputMessage)
+				if event.Message != healthEvent.ExpectedOutputMessage {
+					t.Errorf("Testcase %d. Node event Message %s is not matching with expectedEventMessage %s", testCase, event.Message, healthEvent.ExpectedOutputMessage)
 				}
-				if healthEvent.ExpectedOutputReason != string(event.Reason) {
-					t.Errorf("Testcase %d. Node event Reason %s is not matching with expectedEventReason %s", testCase, string(event.Reason), healthEvent.ExpectedOutputReason)
+				if event.Type != healthEvent.ExpectedOutputEventType {
+					t.Errorf("Testcase %d. Node event Reason %s is not matching with expectedEventReason %s", testCase, event.Type, healthEvent.ExpectedOutputEventType)
 				}
 			}
 		}
-		if conditionFound == false {
+		if !found {
 			t.Errorf("Testcase %d nodeEvent is missing", testCase)
 		}
 	}
@@ -526,28 +530,6 @@ func TestRemoveImpactedEntitiesMessages(t *testing.T) {
 	for i, test := range tests {
 		result := k8sConnector.removeImpactedEntitiesMessages(test.messages, convertToEntityPointers(test.EntitiesImpacted))
 		assert.Equal(t, test.expected, result, "Test %d", i)
-	}
-}
-
-func TestUpdateHealthEventReason(t *testing.T) {
-	tests := []struct {
-		checkName string
-		isHealthy bool
-		expected  string
-	}{
-		{"GpuXidError", true, "GpuXidErrorIsHealthy"},
-		{"GpuXidError", false, "GpuXidErrorIsNotHealthy"},
-		{"XidBatchError", true, "XidBatchErrorIsHealthy"},
-		{"XidBatchError", false, "XidBatchErrorIsNotHealthy"},
-		{"GpuPcieWatch", true, "GpuPcieWatchIsHealthy"},
-		{"GpuPcieWatch", false, "GpuPcieWatchIsNotHealthy"},
-	}
-
-	for i, test := range tests {
-		result := k8sConnector.updateHealthEventReason(test.checkName, test.isHealthy)
-		if result != test.expected {
-			t.Errorf("Test %d failed: expected %s, got %s", i, test.expected, result)
-		}
 	}
 }
 
@@ -732,7 +714,14 @@ func TestUpdateNodeCondition_NewCondition(t *testing.T) {
 				if condition.Message != expectedMessage {
 					t.Errorf("Expected condition message to be %s, got %s", expectedMessage, condition.Message)
 				}
-				expectedReason := k8sConnector.updateHealthEventReason(healthEvent.CheckName, healthEvent.IsHealthy)
+
+				expectedReason := ""
+				if condition.Status == corev1.ConditionTrue {
+					expectedReason = healthEvent.CheckName + "IsNotHealthy"
+				} else {
+					expectedReason = healthEvent.CheckName + "IsHealthy"
+				}
+
 				if condition.Reason != expectedReason {
 					t.Errorf("Expected condition reason to be %s, got %s", expectedReason, condition.Reason)
 				}
@@ -769,7 +758,7 @@ func TestUpdateNodeCondition_AddMessage(t *testing.T) {
 				Message:            "XID45 error on GPU 1",
 				NodeName:           "testnode",
 			},
-			expectedMessage: "GPU:0 error;ErrorCode:45 GPU:1 XID45 error on GPU 1 Recommended Action=CONTACT_SUPPORT;",
+			expectedMessage: "GPU:0 error;ErrorCode:45 GPU:1 XID45 error on GPU 1 Recommended Action=CONTACT_SUPPORT",
 		},
 		{
 			conditionType: "EthernetErrorCheck",
@@ -785,7 +774,7 @@ func TestUpdateNodeCondition_AddMessage(t *testing.T) {
 				Message:            "error on eth1",
 				NodeName:           "testnode",
 			},
-			expectedMessage: "NIC:eth0 error;NIC:eth1 error on eth1 Recommended Action=CONTACT_SUPPORT;",
+			expectedMessage: "NIC:eth0 error;NIC:eth1 error on eth1 Recommended Action=CONTACT_SUPPORT",
 		},
 		{
 			conditionType: "NvswitchErrorFromKmsgWatch",
@@ -802,7 +791,7 @@ func TestUpdateNodeCondition_AddMessage(t *testing.T) {
 				Message:            "Nvswitch error on nvswitch1",
 				NodeName:           "testnode",
 			},
-			expectedMessage: " nvswitch0 error;ErrorCode:SWITCH_ERROR NVSWITCH:1 Nvswitch error on nvswitch1 Recommended Action=CONTACT_SUPPORT;",
+			expectedMessage: " nvswitch0 error;ErrorCode:SWITCH_ERROR NVSWITCH:1 Nvswitch error on nvswitch1 Recommended Action=CONTACT_SUPPORT",
 		},
 	}
 
@@ -874,19 +863,19 @@ func TestUpdateNodeCondition_RemoveMessages(t *testing.T) {
 			conditionType:    "GpuXidError",
 			existingMsg:      "GPU:0 error;GPU:1 error;",
 			entitiesImpacted: []*protos.Entity{{EntityType: "GPU", EntityValue: "0"}},
-			expectedMessage:  "GPU:1 error;",
+			expectedMessage:  "GPU:1 error",
 		},
 		{
 			conditionType:    "InfiniBandErrorCheck",
 			existingMsg:      "NIC:eth0 error;NIC:eth1 error;",
 			entitiesImpacted: []*protos.Entity{{EntityType: "NIC", EntityValue: "eth0"}},
-			expectedMessage:  "NIC:eth1 error;",
+			expectedMessage:  "NIC:eth1 error",
 		},
 		{
 			conditionType:    "NvswitchErrorFromKmsgWatch",
 			existingMsg:      "NVSWITCH:0 error;NVSWITCH:1 error;",
 			entitiesImpacted: []*protos.Entity{{EntityType: "NVSWITCH", EntityValue: "0"}},
-			expectedMessage:  "NVSWITCH:1 error;",
+			expectedMessage:  "NVSWITCH:1 error",
 		},
 	}
 
@@ -1534,7 +1523,7 @@ func TestProcessHealthEvents_StoreOnlyStrategy(t *testing.T) {
 			expectKubernetesEvents: true,
 			description:            "EXECUTE_REMEDIATION non fatal event should create Kubernetes event",
 			expectedConditionType:  "",
-			expectedEventType:      "GpuPowerWatch",
+			expectedEventType:      corev1.EventTypeWarning,
 		},
 	}
 

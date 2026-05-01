@@ -238,7 +238,7 @@ func TestK8sConnector_WithEnvtest_NodeEventCreation(t *testing.T) {
 
 	eventFound := false
 	for _, event := range events.Items {
-		if event.Type == "GpuThermalWatch" {
+		if event.Type == corev1.EventTypeWarning {
 			eventFound = true
 			assert.Contains(t, event.Message, "ErrorCode:DCGM_FR_CLOCK_THROTTLE_THERMAL")
 			assert.Contains(t, event.Message, "GPU:0")
@@ -431,8 +431,11 @@ func TestK8sConnector_WithEnvtest_MultipleEventsForSameNode(t *testing.T) {
 
 	eventFound := false
 	for _, event := range events.Items {
-		if event.Type == "GpuThermalWatch" {
+		if event.Type == corev1.EventTypeWarning {
 			eventFound = true
+			assert.Contains(t, event.Message, "ErrorCode:THERMAL_WARNING")
+			assert.Contains(t, event.Message, "GPU:1")
+			assert.Equal(t, "GpuThermalWatchIsNotHealthy", event.Reason)
 			break
 		}
 	}
@@ -532,31 +535,27 @@ func TestK8sConnector_WithEnvtest_EventCountIncrement(t *testing.T) {
 		Events: []*protos.HealthEvent{healthEvent},
 	}
 
+	// Create event
 	err = connector.processHealthEvents(ctx, healthEventsProto)
 	require.NoError(t, err)
 
-	events, err := cli.CoreV1().Events(DefaultNamespace).List(ctx, metav1.ListOptions{
-		FieldSelector: "involvedObject.name=test-node",
-	})
-	require.NoError(t, err)
-	assert.True(t, len(events.Items) > 0, "event was not created")
-
+	// Increment event
 	err = connector.processHealthEvents(ctx, healthEventsProto)
 	require.NoError(t, err)
 
-	events, err = cli.CoreV1().Events(DefaultNamespace).List(ctx, metav1.ListOptions{
-		FieldSelector: "involvedObject.name=test-node",
-	})
+	events, err := cli.CoreV1().Events(DefaultNamespace).List(ctx, metav1.ListOptions{})
 	require.NoError(t, err)
 
-	eventFound := false
-	for _, event := range events.Items {
-		if event.Type == "GpuThermalWatch" && event.Count >= 2 {
-			eventFound = true
+	var targetEvent *corev1.Event
+	for _, e := range events.Items {
+		if e.InvolvedObject.Name == "test-node" && e.Reason == "GpuThermalWatchIsNotHealthy" {
+			targetEvent = &e
 			break
 		}
 	}
-	assert.True(t, eventFound, "event count was not incremented")
+
+	require.NotNil(t, targetEvent, "Event was not found")
+	assert.Equal(t, int32(2), targetEvent.Count, "Event count should be exactly 2")
 }
 
 // TestK8sConnector_WithEnvtest_NodeNotFound tests handling of non-existent nodes
@@ -972,17 +971,16 @@ func TestK8sConnector_WithEnvtest_MultipleCheckTypes(t *testing.T) {
 		assert.True(t, found, "condition %s was not created", condType)
 	}
 
-	events, err := cli.CoreV1().Events("").List(ctx, metav1.ListOptions{
-		FieldSelector: "involvedObject.kind=Node,involvedObject.name=test-node",
-	})
+	events, err := cli.CoreV1().Events(DefaultNamespace).List(ctx, metav1.ListOptions{})
 	require.NoError(t, err, "failed to list events")
 
-	eventFound := false
-	for _, event := range events.Items {
-		if event.Type == "GpuThermalWatch" {
-			eventFound = true
+	var targetEvent *corev1.Event
+	for _, e := range events.Items {
+		if e.InvolvedObject.Name == "test-node" && e.Reason == "GpuThermalWatchIsNotHealthy" {
+			targetEvent = &e
 			break
 		}
 	}
-	assert.True(t, eventFound, "non-fatal event was not created")
+
+	require.NotNil(t, targetEvent, "non-fatal event was not created")
 }

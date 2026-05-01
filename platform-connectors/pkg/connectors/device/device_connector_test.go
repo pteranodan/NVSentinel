@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nvidia/device-api/api/device/v1alpha1"
 	devicev1alpha1 "github.com/nvidia/device-api/api/device/v1alpha1"
 	"github.com/nvidia/device-api/client-go/clientset/device/fake"
 	pb "github.com/nvidia/nvsentinel/data-models/pkg/protos"
@@ -33,6 +34,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clienttesting "k8s.io/client-go/testing"
 )
+
+type statusPatch struct {
+	Status v1alpha1.GPUStatus `json:"status"`
+}
 
 func TestFetchAndProcess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -179,7 +184,15 @@ func TestProcessHealthEvents_NormalizesToK8sNaming(t *testing.T) {
 	gpuName := "gpu-636c7467-3136"
 	fakeGPU := &devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: gpuName}}
 	fakeCS := fake.NewSimpleClientset(fakeGPU)
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	healthEvents := &pb.HealthEvents{
 		Events: []*pb.HealthEvent{
@@ -202,7 +215,15 @@ func TestProcessHealthEvents_NormalizesToK8sNaming(t *testing.T) {
 
 func TestProcessHealthEvents_GroupingIsCaseInsensitive(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	healthEvents := &pb.HealthEvents{
 		Events: []*pb.HealthEvent{
@@ -218,7 +239,15 @@ func TestProcessHealthEvents_GroupingIsCaseInsensitive(t *testing.T) {
 
 func TestProcessHealthEvents_EmptyEntityValue(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset()
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	healthEvents := &pb.HealthEvents{
 		Events: []*pb.HealthEvent{
@@ -245,7 +274,15 @@ func TestProcessHealthEvents_FilterStoreOnly(t *testing.T) {
 	}
 
 	fakeCS := fake.NewSimpleClientset(fakeGPU)
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	healthEvents := &pb.HealthEvents{
 		Events: []*pb.HealthEvent{
@@ -276,7 +313,15 @@ func TestProcessHealthEvents_EntityTypeFiltering(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{
 		ObjectMeta: metav1.ObjectMeta{Name: gpuName},
 	})
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	healthEvents := &pb.HealthEvents{
 		Events: []*pb.HealthEvent{
@@ -319,7 +364,15 @@ func TestProcessHealthEvents_EntityTypeFiltering(t *testing.T) {
 
 func TestProcessHealthEvents_NoApplicableEvents(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset()
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	healthEvents := &pb.HealthEvents{
 		Events: []*pb.HealthEvent{
@@ -343,7 +396,15 @@ func TestProcessHealthEvents_NoApplicableEvents(t *testing.T) {
 
 func TestProcessGPUEvents_EmptyCheckName(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	events := []*pb.HealthEvent{
 		{
@@ -372,7 +433,15 @@ func TestProcessHealthEvents_MultipleGPU(t *testing.T) {
 		&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}},
 		&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-1"}},
 	)
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	healthEvents := &pb.HealthEvents{
 		Events: []*pb.HealthEvent{
@@ -396,7 +465,15 @@ func TestProcessHealthEvents_MultipleGPU(t *testing.T) {
 
 func TestProcessHealthEvents_PartialFailure(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-1"}})
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	healthEvents := &pb.HealthEvents{
 		Events: []*pb.HealthEvent{
@@ -434,7 +511,15 @@ func TestProcessGPUEvents_LatestEventWins(t *testing.T) {
 	}
 
 	fakeCS := fake.NewSimpleClientset(fakeGPU)
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	events := []*pb.HealthEvent{
 		{
@@ -479,7 +564,15 @@ func TestProcessGPUEvents_LatestEventWins(t *testing.T) {
 func TestProcessGPUEvents_MultipleChecks(t *testing.T) {
 	gpuName := "gpu-0"
 	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: gpuName}})
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	events := []*pb.HealthEvent{
 		{
@@ -520,7 +613,15 @@ func TestProcessGPUEvents_MessageTruncation(t *testing.T) {
 	}
 
 	fakeCS := fake.NewSimpleClientset(fakeGPU)
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	longMsg := strings.Repeat("A", 2000)
 	events := []*pb.HealthEvent{
@@ -545,7 +646,15 @@ func TestProcessGPUEvents_MessageTruncation(t *testing.T) {
 
 func TestProcessGPUEvents_TruncationBoundaries(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	tests := []struct {
 		nameLength int
@@ -608,7 +717,15 @@ func TestProcessGPUEvents_SortNilTimestamps(t *testing.T) {
 	}
 
 	fakeCS := fake.NewSimpleClientset(fakeGPU)
-	connector := &DeviceConnector{clientset: fakeCS}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	connector := &DeviceConnector{
+		clientset: fakeCS,
+		stopCh:    stopCh,
+		ctx:       context.Background(),
+	}
 
 	now := time.Now()
 	events := []*pb.HealthEvent{
