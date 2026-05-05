@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/nvidia/device-api/api/device/v1alpha1"
-	devicev1alpha1 "github.com/nvidia/device-api/api/device/v1alpha1"
 	"github.com/nvidia/device-api/client-go/clientset/device/fake"
 	pb "github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	"github.com/nvidia/nvsentinel/platform-connectors/pkg/ringbuffer"
@@ -43,7 +42,7 @@ func TestFetchAndProcess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	fakeGPU := &devicev1alpha1.GPU{
+	fakeGPU := &v1alpha1.GPU{
 		ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"},
 	}
 
@@ -84,7 +83,7 @@ func TestFetchAndProcess_HighVolumeThroughput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
+	fakeCS := fake.NewSimpleClientset(&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
 	rb := ringbuffer.NewRingBuffer(t.Name(), ctx)
 	stopCh := make(chan struct{})
 	connector := NewConnector(fakeCS, rb, stopCh)
@@ -114,7 +113,7 @@ func TestFetchAndProcess_BatchDeduplication(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
+	fakeCS := fake.NewSimpleClientset(&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
 	rb := ringbuffer.NewRingBuffer(t.Name(), ctx)
 	stopCh := make(chan struct{})
 	connector := NewConnector(fakeCS, rb, stopCh)
@@ -182,7 +181,7 @@ func TestConnector_GracefulStop(t *testing.T) {
 func TestProcessHealthEvents_NormalizesToK8sNaming(t *testing.T) {
 	//  Name must be DNS subdomain name
 	gpuName := "gpu-636c7467-3136"
-	fakeGPU := &devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: gpuName}}
+	fakeGPU := &v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: gpuName}}
 	fakeCS := fake.NewSimpleClientset(fakeGPU)
 
 	stopCh := make(chan struct{})
@@ -213,7 +212,7 @@ func TestProcessHealthEvents_NormalizesToK8sNaming(t *testing.T) {
 }
 
 func TestProcessHealthEvents_GroupingIsCaseInsensitive(t *testing.T) {
-	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
+	fakeCS := fake.NewSimpleClientset(&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -264,7 +263,7 @@ func TestProcessHealthEvents_EmptyEntityValue(t *testing.T) {
 }
 
 func TestProcessHealthEvents_FilterStoreOnly(t *testing.T) {
-	fakeGPU := &devicev1alpha1.GPU{
+	fakeGPU := &v1alpha1.GPU{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gpu-0",
 		},
@@ -306,7 +305,7 @@ func TestProcessHealthEvents_FilterStoreOnly(t *testing.T) {
 
 func TestProcessHealthEvents_EntityTypeFiltering(t *testing.T) {
 	gpuName := "gpu-0"
-	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{
+	fakeCS := fake.NewSimpleClientset(&v1alpha1.GPU{
 		ObjectMeta: metav1.ObjectMeta{Name: gpuName},
 	})
 
@@ -389,7 +388,7 @@ func TestProcessHealthEvents_NoApplicableEvents(t *testing.T) {
 }
 
 func TestProcessGPUEvents_EmptyCheckName(t *testing.T) {
-	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
+	fakeCS := fake.NewSimpleClientset(&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -423,8 +422,8 @@ func TestProcessGPUEvents_EmptyCheckName(t *testing.T) {
 
 func TestProcessHealthEvents_MultipleGPU(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset(
-		&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}},
-		&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-1"}},
+		&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}},
+		&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-1"}},
 	)
 
 	stopCh := make(chan struct{})
@@ -456,7 +455,7 @@ func TestProcessHealthEvents_MultipleGPU(t *testing.T) {
 }
 
 func TestProcessHealthEvents_PartialFailure(t *testing.T) {
-	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-1"}})
+	fakeCS := fake.NewSimpleClientset(&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-1"}})
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -495,7 +494,7 @@ func TestProcessHealthEvents_PartialFailure(t *testing.T) {
 
 func TestProcessGPUEvents_LatestEventWins(t *testing.T) {
 	gpuName := "gpu-0"
-	fakeGPU := &devicev1alpha1.GPU{
+	fakeGPU := &v1alpha1.GPU{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: gpuName,
 		},
@@ -553,7 +552,7 @@ func TestProcessGPUEvents_LatestEventWins(t *testing.T) {
 
 func TestProcessGPUEvents_MultipleChecks(t *testing.T) {
 	gpuName := "gpu-0"
-	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: gpuName}})
+	fakeCS := fake.NewSimpleClientset(&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: gpuName}})
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -595,7 +594,7 @@ func TestProcessGPUEvents_MultipleChecks(t *testing.T) {
 
 func TestProcessGPUEvents_MessageTruncation(t *testing.T) {
 	gpuName := "gpu-0"
-	fakeGPU := &devicev1alpha1.GPU{
+	fakeGPU := &v1alpha1.GPU{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: gpuName,
 		},
@@ -633,7 +632,7 @@ func TestProcessGPUEvents_MessageTruncation(t *testing.T) {
 }
 
 func TestProcessGPUEvents_TruncationBoundaries(t *testing.T) {
-	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
+	fakeCS := fake.NewSimpleClientset(&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -671,7 +670,7 @@ func TestProcessGPUEvents_TruncationBoundaries(t *testing.T) {
 
 func TestProcessGPUEvents_RespectsContextCancellation(t *testing.T) {
 	gpuName := "gpu-0"
-	fakeGPU := &devicev1alpha1.GPU{
+	fakeGPU := &v1alpha1.GPU{
 		ObjectMeta: metav1.ObjectMeta{Name: gpuName},
 	}
 
@@ -699,7 +698,7 @@ func TestProcessGPUEvents_RespectsContextCancellation(t *testing.T) {
 
 func TestProcessGPUEvents_SortNilTimestamps(t *testing.T) {
 	gpuName := "gpu-0"
-	fakeGPU := &devicev1alpha1.GPU{
+	fakeGPU := &v1alpha1.GPU{
 		ObjectMeta: metav1.ObjectMeta{Name: gpuName},
 	}
 
@@ -744,7 +743,7 @@ func TestProcessGPUEvents_SortNilTimestamps(t *testing.T) {
 }
 
 func TestProcessGPUEvents_HandlesAPIError(t *testing.T) {
-	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
+	fakeCS := fake.NewSimpleClientset(&v1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
 
 	fakeCS.PrependReactor("patch", "gpus", func(action clienttesting.Action) (bool, runtime.Object, error) {
 		return true, nil, fmt.Errorf("etcdserver: request timed out")
