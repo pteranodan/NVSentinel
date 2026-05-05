@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/nvidia/nvsentinel/commons/pkg/errutil"
 	"github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	"github.com/nvidia/nvsentinel/platform-connectors/pkg/ringbuffer"
 )
@@ -1248,7 +1249,7 @@ func TestIsTemporaryError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isTemporaryError(tt.err)
+			result := errutil.IsTemporaryError(tt.err)
 			if result != tt.expected {
 				t.Errorf("isTemporaryError(%v) = %v, expected %v", tt.err, result, tt.expected)
 			}

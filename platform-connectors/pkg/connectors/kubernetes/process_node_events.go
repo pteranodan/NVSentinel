@@ -18,12 +18,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"net"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -34,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 
+	"github.com/nvidia/nvsentinel/commons/pkg/errutil"
 	"github.com/nvidia/nvsentinel/commons/pkg/eventutil"
 	"github.com/nvidia/nvsentinel/commons/pkg/tracing"
 	"github.com/nvidia/nvsentinel/data-models/pkg/protos"
@@ -70,7 +68,7 @@ func (r *K8sConnector) updateNodeConditions(ctx context.Context, healthEvents []
 	)
 
 	err := retry.OnError(retry.DefaultRetry, func(err error) bool {
-		isRetriable := apierrors.IsConflict(err) || isTemporaryError(err)
+		isRetriable := apierrors.IsConflict(err) || errutil.IsTemporaryError(err)
 		if isRetriable {
 			span.AddEvent("platform_connector.k8s.update_node_conditions_failed",
 				trace.WithAttributes(
@@ -353,7 +351,7 @@ func (r *K8sConnector) writeNodeEvent(ctx context.Context, event *corev1.Event, 
 	)
 
 	err := retry.OnError(retry.DefaultRetry, func(err error) bool {
-		return apierrors.IsConflict(err) || isTemporaryError(err)
+		return apierrors.IsConflict(err) || errutil.IsTemporaryError(err)
 	}, func() error {
 		// Fetch all events for the node
 		events, err := r.clientset.CoreV1().Events(DefaultNamespace).List(ctx, metav1.ListOptions{
@@ -576,160 +574,6 @@ func (r *K8sConnector) processNodeConditionUpdates(ctx context.Context,
 	nodeConditionUpdateCounter.WithLabelValues(StatusSuccess).Inc()
 
 	return nil
-}
-
-// isTemporaryError checks if the error is a temporary network error that should be retried
-func isTemporaryError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	return isContextError(err) ||
-		isKubernetesAPIError(err) ||
-		isNetworkError(err) ||
-		isSyscallError(err) ||
-		isStringBasedError(err) ||
-		errors.Is(err, io.EOF) ||
-		strings.Contains(err.Error(), "EOF")
-}
-
-// isContextError checks if the error is a context-related error that should be retried
-func isContextError(err error) bool {
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
-}
-
-// isKubernetesAPIError checks if the error is a Kubernetes API error that should be retried
-func isKubernetesAPIError(err error) bool {
-	return apierrors.IsTimeout(err) ||
-		apierrors.IsServerTimeout(err) ||
-		apierrors.IsServiceUnavailable(err) ||
-		apierrors.IsTooManyRequests(err) ||
-		apierrors.IsInternalError(err)
-}
-
-// isNetworkError checks if the error is a network-related error that should be retried
-func isNetworkError(err error) bool {
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return netErr.Timeout()
-	}
-
-	return false
-}
-
-// isSyscallError checks if the error is a syscall error that should be retried
-func isSyscallError(err error) bool {
-	return errors.Is(err, syscall.ECONNREFUSED) ||
-		errors.Is(err, syscall.ECONNRESET) ||
-		errors.Is(err, syscall.ECONNABORTED) ||
-		errors.Is(err, syscall.ETIMEDOUT) ||
-		errors.Is(err, syscall.EHOSTUNREACH) ||
-		errors.Is(err, syscall.ENETUNREACH) ||
-		errors.Is(err, syscall.EPIPE)
-}
-
-// isStringBasedError checks if the error message contains retryable error patterns
-func isStringBasedError(err error) bool {
-	errStr := err.Error()
-
-	return isHTTPConnectionError(errStr) ||
-		isTLSError(errStr) ||
-		isDNSError(errStr) ||
-		isLoadBalancerError(errStr) ||
-		isKubernetesStringError(errStr)
-}
-
-// isHTTPConnectionError checks for HTTP/2 and HTTP connection error patterns
-func isHTTPConnectionError(errStr string) bool {
-	httpErrors := []string{
-		"http2: client connection lost",
-		"http2: server connection lost",
-		"http2: connection closed",
-		"connection reset by peer",
-		"broken pipe",
-		"connection refused",
-		"connection timed out",
-		"i/o timeout",
-		"network is unreachable",
-		"host is unreachable",
-	}
-
-	for _, pattern := range httpErrors {
-		if strings.Contains(errStr, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isTLSError checks for TLS/SSL handshake error patterns
-func isTLSError(errStr string) bool {
-	tlsErrors := []string{
-		"tls: handshake timeout",
-		"tls: oversized record received",
-		"remote error: tls:",
-	}
-
-	for _, pattern := range tlsErrors {
-		if strings.Contains(errStr, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isDNSError checks for DNS resolution error patterns
-func isDNSError(errStr string) bool {
-	dnsErrors := []string{
-		"no such host",
-		"dns: no answer",
-		"temporary failure in name resolution",
-	}
-
-	for _, pattern := range dnsErrors {
-		if strings.Contains(errStr, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isLoadBalancerError checks for load balancer and proxy error patterns
-func isLoadBalancerError(errStr string) bool {
-	lbErrors := []string{
-		"502 Bad Gateway",
-		"503 Service Unavailable",
-		"504 Gateway Timeout",
-	}
-
-	for _, pattern := range lbErrors {
-		if strings.Contains(errStr, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isKubernetesStringError checks for Kubernetes-specific error patterns
-func isKubernetesStringError(errStr string) bool {
-	k8sErrors := []string{
-		"the server is currently unable to handle the request",
-		"etcd cluster is unavailable",
-		"unable to connect to the server",
-		"server is not ready",
-	}
-
-	for _, pattern := range k8sErrors {
-		if strings.Contains(errStr, pattern) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // totalMessageLength returns the byte length of messages joined with ";" separators plus a trailing ";".

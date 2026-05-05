@@ -28,11 +28,14 @@ import (
 
 	"github.com/nvidia/device-api/api/device/v1alpha1"
 	deviceset "github.com/nvidia/device-api/client-go/clientset/device"
+	"github.com/nvidia/nvsentinel/commons/pkg/errutil"
 	"github.com/nvidia/nvsentinel/commons/pkg/eventutil"
 	pb "github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	"github.com/nvidia/nvsentinel/platform-connectors/pkg/ringbuffer"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 )
 
 const connectorName = "device"
@@ -280,12 +283,21 @@ func (r *DeviceConnector) processGPUEvents(ctx context.Context, name string, eve
 		return fmt.Errorf("failed to marshal status patch for GPU %q: %w", name, err)
 	}
 
-	_, err = r.clientset.DeviceV1alpha1().GPUs().Patch(ctx,
-		name,
-		types.StrategicMergePatchType,
-		patchBytes,
-		metav1.PatchOptions{},
-		"status",
+	err = retry.OnError(retry.DefaultBackoff,
+		func(err error) bool {
+			return apierrors.IsConflict(err) || errutil.IsTemporaryError(err)
+		},
+		func() error {
+			_, err = r.clientset.DeviceV1alpha1().GPUs().Patch(ctx,
+				name,
+				types.StrategicMergePatchType,
+				patchBytes,
+				metav1.PatchOptions{},
+				"status",
+			)
+
+			return err
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to patch GPU %q status: %w", name, err)
