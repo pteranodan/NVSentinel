@@ -299,13 +299,12 @@ func initializeGRPCSinkConnector(
 
 func initializeDeviceConnector(
 	ctx context.Context,
-	config map[string]interface{},
 	stopCh chan struct{},
 ) (*device.DeviceConnector, error) {
 	ringBuffer := ringbuffer.NewRingBuffer("device", ctx)
 	server.InitializeAndAttachRingBufferForConnectors(ringBuffer)
 
-	connector, err := device.InitializeConnector(ctx, ringBuffer, stopCh)
+	connector, err := device.InitializeConnector(ringBuffer, stopCh)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +351,7 @@ func initializeConnectors(
 	}
 
 	if config["enableDevicePlatformConnector"] == True {
-		deviceConnector, err = initializeDeviceConnector(ctx, config, stopCh)
+		deviceConnector, err = initializeDeviceConnector(ctx, stopCh)
 		if err != nil {
 			return nil, nil, nil, nil, fmt.Errorf("failed to initialize device platform connector: %w", err)
 		}
@@ -405,7 +404,7 @@ func cleanupResources(
 	}
 
 	if deviceConnector != nil {
-		if err := deviceConnector.Stop(); err != nil {
+		if err := deviceConnector.Stop(ctx); err != nil {
 			slog.Error("Failed to stop platform connector", "connector", "device", "error", err)
 		}
 	}

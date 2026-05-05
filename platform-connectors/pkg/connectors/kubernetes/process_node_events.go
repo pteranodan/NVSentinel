@@ -442,10 +442,8 @@ func (r *K8sConnector) constructHealthEventMessage(healthEvent *protos.HealthEve
 		parts = append(parts, sanitizedMessage)
 	}
 
-	// Only include if there is an actionable recommendation
-	if rec := eventutil.GetRecommendedAction(healthEvent); rec != nil {
-		parts = append(parts, fmt.Sprintf("Recommended Action=%s", *rec))
-	}
+	rec := healthEvent.GetRecommendedAction()
+	parts = append(parts, fmt.Sprintf("%s%s", recommendedActionMarker, rec))
 
 	return strings.Join(parts, " ")
 }
@@ -478,15 +476,6 @@ func filterProcessableEvents(ctx context.Context, healthEvents *protos.HealthEve
 func (r *K8sConnector) createK8sEvent(healthEvent *protos.HealthEvent) *corev1.Event {
 	ts := eventutil.GetTime(healthEvent, time.Now())
 
-	status := eventutil.GetConditionStatus(healthEvent)
-
-	var eventType string
-	if status == metav1.ConditionFalse {
-		eventType = corev1.EventTypeNormal
-	} else {
-		eventType = corev1.EventTypeWarning
-	}
-
 	return &corev1.Event{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s.%x", healthEvent.NodeName, metav1.Now().UnixNano()),
@@ -508,7 +497,7 @@ func (r *K8sConnector) createK8sEvent(healthEvent *protos.HealthEvent) *corev1.E
 		},
 		FirstTimestamp: metav1.NewTime(ts),
 		LastTimestamp:  metav1.NewTime(ts),
-		Type:           eventType,
+		Type:           corev1.EventTypeWarning,
 	}
 }
 

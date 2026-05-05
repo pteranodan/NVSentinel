@@ -42,12 +42,10 @@ type DeviceConnector struct {
 	clientset  deviceset.Interface
 	ringBuffer *ringbuffer.RingBuffer
 	stopCh     <-chan struct{}
-	ctx        context.Context
 }
 
 // NewConnector returns a new DeviceConnector initialized with the provided clientset and buffer.
 func NewConnector(
-	ctx context.Context,
 	client deviceset.Interface,
 	ringBuffer *ringbuffer.RingBuffer,
 	stopCh <-chan struct{}) *DeviceConnector {
@@ -55,14 +53,12 @@ func NewConnector(
 		clientset:  client,
 		ringBuffer: ringBuffer,
 		stopCh:     stopCh,
-		ctx:        ctx,
 	}
 }
 
 // InitializeConnector creates a DeviceConnector by discovering the API target
 // from the NVIDIA_DEVICE_API_PATH environment variable.
 func InitializeConnector(
-	ctx context.Context,
 	ringBuffer *ringbuffer.RingBuffer,
 	stopCh <-chan struct{}) (*DeviceConnector, error) {
 	target := os.Getenv("NVIDIA_DEVICE_API_PATH")
@@ -72,7 +68,7 @@ func InitializeConnector(
 		return nil, err
 	}
 
-	return NewConnector(ctx, cs, ringBuffer, stopCh), nil
+	return NewConnector(cs, ringBuffer, stopCh), nil
 }
 
 // FetchAndProcessHealthMetric runs the main event loop, dequeuing health metrics and patching GPU status.
@@ -80,7 +76,10 @@ func (r *DeviceConnector) FetchAndProcessHealthMetric(ctx context.Context) {
 	for {
 		select {
 		case <-r.stopCh:
-			slog.InfoContext(r.ctx, "Stopping platform connector", "connector", connectorName)
+			slog.InfoContext(ctx, "Stopping platform connector", "connector", connectorName)
+			return
+		case <-ctx.Done():
+			slog.InfoContext(ctx, "Context cancelled; stopping connector", "connector", connectorName)
 			return
 		default:
 			queued, quit := r.ringBuffer.Dequeue()
@@ -89,81 +88,48 @@ func (r *DeviceConnector) FetchAndProcessHealthMetric(ctx context.Context) {
 				return
 			}
 
-			if queued == nil || queued.Events == nil || len(queued.Events.GetEvents()) == 0 {
-				r.ringBuffer.HealthMetricEleProcessingCompleted(queued)
-				continue
-			}
-
-			healthEvents := queued.Events
-
-			if err := r.processHealthEvents(ctx, healthEvents); err != nil {
-				events := healthEvents.GetEvents()
-				logFields := []any{
-					"connector", connectorName,
-					"error", err,
-					"count", len(events),
-					"version", healthEvents.GetVersion(),
-				}
-
-				if start, end, ok := eventutil.GetWindow(events); ok {
-					logFields = append(logFields, "window_start", start, "window_end", end)
-				}
-
-				slog.ErrorContext(ctx, "Failed to process health events", logFields...)
-
-				slog.DebugContext(ctx, "Health event payload",
-					"version", healthEvents.GetVersion(),
-					"events", events,
-				)
-
-				r.ringBuffer.HealthMetricEleProcessingFailed(queued)
-			} else {
-				r.ringBuffer.HealthMetricEleProcessingCompleted(queued)
-			}
+			r.processQueuedHealthEvents(ctx, queued)
 		}
 	}
 }
 
-func (r *DeviceConnector) processHealthEvents(ctx context.Context, healthEvents *pb.HealthEvents) error {
-	eventsByGPU := make(map[string][]*pb.HealthEvent)
-
-	for _, event := range healthEvents.Events {
-		if event.ProcessingStrategy == pb.ProcessingStrategy_STORE_ONLY {
-			slog.InfoContext(ctx, "Skipping health event: store only",
-				"connector", connectorName,
-				"node", event.GetNodeName(),
-				"event_id", event.GetId(),
-				"checkName", event.GetCheckName(),
-				"agent", event.GetAgent(),
-				"skipped", true,
-				"storeOnly", true)
-
-			continue
-		}
-
-		for _, entity := range event.EntitiesImpacted {
-			if entity.EntityType == "GPU" {
-				name := strings.ToLower(entity.EntityValue)
-				if name == "" {
-					slog.WarnContext(ctx, "Skipping health event: empty entity value",
-						"connector", connectorName,
-						"node", event.GetNodeName(),
-						"event_id", event.GetId(),
-						"checkName", event.GetCheckName(),
-						"agent", event.GetAgent(),
-						"entity_type", entity.GetEntityType(),
-						"entity_value", entity.GetEntityValue(),
-						"skipped", true,
-						"storeOnly", false)
-
-					continue
-				}
-
-				eventsByGPU[name] = append(eventsByGPU[name], event)
-			}
-		}
+func (r *DeviceConnector) processQueuedHealthEvents(ctx context.Context, queued *ringbuffer.QueuedHealthEvents) {
+	if queued == nil || queued.Events == nil || len(queued.Events.GetEvents()) == 0 {
+		r.ringBuffer.HealthMetricEleProcessingCompleted(queued)
+		return
 	}
 
+	healthEvents := queued.Events
+	if err := r.processHealthEvents(ctx, healthEvents); err != nil {
+		events := healthEvents.GetEvents()
+		logFields := []any{
+			"connector", connectorName,
+			"error", err,
+			"count", len(events),
+			"version", healthEvents.GetVersion(),
+		}
+
+		if start, end, ok := eventutil.GetWindow(events); ok {
+			logFields = append(logFields, "window_start", start, "window_end", end)
+		}
+
+		slog.ErrorContext(ctx, "Failed to process health events", logFields...)
+
+		slog.DebugContext(ctx, "Health event payload",
+			"version", healthEvents.GetVersion(),
+			"events", events,
+		)
+
+		r.ringBuffer.HealthMetricEleProcessingFailed(queued)
+
+		return
+	}
+
+	r.ringBuffer.HealthMetricEleProcessingCompleted(queued)
+}
+
+func (r *DeviceConnector) processHealthEvents(ctx context.Context, healthEvents *pb.HealthEvents) error {
+	eventsByGPU := r.groupByGPU(ctx, healthEvents)
 	gpuCount := len(eventsByGPU)
 
 	var errs error
@@ -172,7 +138,11 @@ func (r *DeviceConnector) processHealthEvents(ctx context.Context, healthEvents 
 		if gpuCount > 1 {
 			// We delay the execution by a random duration to prevent
 			// thundering herd issues against the API server.
-			r.applyJitter(gpuCount)
+			r.applyJitter(ctx, gpuCount)
+
+			if err := ctx.Err(); err != nil {
+				errs = errors.Join(errs, err)
+			}
 		}
 
 		if err := r.processGPUEvents(ctx, name, events); err != nil {
@@ -183,9 +153,58 @@ func (r *DeviceConnector) processHealthEvents(ctx context.Context, healthEvents 
 	return errs
 }
 
+func (r *DeviceConnector) groupByGPU(ctx context.Context, healthEvents *pb.HealthEvents) map[string][]*pb.HealthEvent {
+	eventsByGPU := make(map[string][]*pb.HealthEvent)
+
+	for _, event := range healthEvents.Events {
+		if event.ProcessingStrategy == pb.ProcessingStrategy_STORE_ONLY {
+			r.logSkippedEvent(ctx, event, "store only", true)
+			continue
+		}
+
+		if event.GetCheckName() == "" {
+			r.logSkippedEvent(ctx, event, "empty check name", false)
+			continue
+		}
+
+		for _, entity := range event.EntitiesImpacted {
+			if entity.EntityType == "GPU" {
+				name := strings.ToLower(entity.EntityValue)
+				if name == "" {
+					r.logSkippedEvent(ctx, event, "empty entity value", false)
+					continue
+				}
+
+				eventsByGPU[name] = append(eventsByGPU[name], event)
+			}
+		}
+	}
+
+	return eventsByGPU
+}
+
+func (r *DeviceConnector) logSkippedEvent(ctx context.Context, event *pb.HealthEvent, reason string, storeOnly bool) {
+	logArgs := []any{
+		"connector", connectorName,
+		"node", event.GetNodeName(),
+		"agent", event.GetAgent(),
+		"checkName", event.GetCheckName(),
+		"event_id", event.GetId(),
+		"reason", reason,
+		"skipped", true,
+		"storeOnly", storeOnly,
+	}
+
+	if storeOnly {
+		slog.InfoContext(ctx, "Skipping health event", logArgs...)
+	} else {
+		slog.WarnContext(ctx, "Skipping health event", logArgs...)
+	}
+}
+
 // applyJitter delays execution by a random duration.
 // The jitter window scales logarithmically with the count.
-func (r *DeviceConnector) applyJitter(count int) {
+func (r *DeviceConnector) applyJitter(ctx context.Context, count int) {
 	if count <= 1 {
 		return
 	}
@@ -208,7 +227,7 @@ func (r *DeviceConnector) applyJitter(count int) {
 	select {
 	case <-time.After(delay):
 	case <-r.stopCh:
-	case <-r.ctx.Done():
+	case <-ctx.Done():
 	}
 }
 
@@ -223,21 +242,7 @@ func (r *DeviceConnector) processGPUEvents(ctx context.Context, name string, eve
 
 	sortedEvents := eventutil.SortByAge(events)
 	for _, event := range sortedEvents {
-		checkName := event.GetCheckName()
-		if checkName == "" {
-			slog.WarnContext(ctx, "Skipping health event: empty check name",
-				"connector", connectorName,
-				"event_id", event.GetId(),
-				"agent", event.GetAgent(),
-				"entity_type", "GPU",
-				"entity_value", name,
-				"skipped", true,
-				"storeOnly", false)
-
-			continue
-		}
-
-		latestByCheck[checkName] = event
+		latestByCheck[event.GetCheckName()] = event
 		latest = event
 	}
 
@@ -291,11 +296,11 @@ func (r *DeviceConnector) processGPUEvents(ctx context.Context, name string, eve
 
 // Stop gracefully shuts down the connector by draining the internal queue
 // and closing the clientset.
-func (r *DeviceConnector) Stop() error {
+func (r *DeviceConnector) Stop(ctx context.Context) error {
 	if r.ringBuffer != nil {
-		slog.InfoContext(r.ctx, "Shutting down platform connector queue", "connector", connectorName)
+		slog.InfoContext(ctx, "Shutting down platform connector queue", "connector", connectorName)
 		r.ringBuffer.ShutDownHealthMetricQueue()
-		slog.InfoContext(r.ctx, "Platform connector queue drained", "connector", connectorName)
+		slog.InfoContext(ctx, "Platform connector queue drained", "connector", connectorName)
 	}
 
 	if r.clientset != nil {

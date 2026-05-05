@@ -51,7 +51,7 @@ func TestFetchAndProcess(t *testing.T) {
 	rb := ringbuffer.NewRingBuffer(t.Name(), ctx)
 	stopCh := make(chan struct{})
 
-	connector := NewConnector(ctx, fakeCS, rb, stopCh)
+	connector := NewConnector(fakeCS, rb, stopCh)
 
 	go connector.FetchAndProcessHealthMetric(ctx)
 
@@ -87,7 +87,7 @@ func TestFetchAndProcess_HighVolumeThroughput(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
 	rb := ringbuffer.NewRingBuffer(t.Name(), ctx)
 	stopCh := make(chan struct{})
-	connector := NewConnector(ctx, fakeCS, rb, stopCh)
+	connector := NewConnector(fakeCS, rb, stopCh)
 
 	go connector.FetchAndProcessHealthMetric(ctx)
 
@@ -117,7 +117,7 @@ func TestFetchAndProcess_BatchDeduplication(t *testing.T) {
 	fakeCS := fake.NewSimpleClientset(&devicev1alpha1.GPU{ObjectMeta: metav1.ObjectMeta{Name: "gpu-0"}})
 	rb := ringbuffer.NewRingBuffer(t.Name(), ctx)
 	stopCh := make(chan struct{})
-	connector := NewConnector(ctx, fakeCS, rb, stopCh)
+	connector := NewConnector(fakeCS, rb, stopCh)
 
 	go connector.FetchAndProcessHealthMetric(ctx)
 
@@ -162,7 +162,7 @@ func TestConnector_GracefulStop(t *testing.T) {
 	ctx := context.Background()
 	rb := ringbuffer.NewRingBuffer(t.Name(), ctx)
 	stopCh := make(chan struct{})
-	connector := NewConnector(ctx, nil, rb, stopCh)
+	connector := NewConnector(nil, rb, stopCh)
 
 	loopExited := make(chan struct{})
 	go func() {
@@ -191,7 +191,6 @@ func TestProcessHealthEvents_NormalizesToK8sNaming(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	healthEvents := &pb.HealthEvents{
@@ -222,7 +221,6 @@ func TestProcessHealthEvents_GroupingIsCaseInsensitive(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	healthEvents := &pb.HealthEvents{
@@ -246,7 +244,6 @@ func TestProcessHealthEvents_EmptyEntityValue(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	healthEvents := &pb.HealthEvents{
@@ -281,7 +278,6 @@ func TestProcessHealthEvents_FilterStoreOnly(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	healthEvents := &pb.HealthEvents{
@@ -320,7 +316,6 @@ func TestProcessHealthEvents_EntityTypeFiltering(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	healthEvents := &pb.HealthEvents{
@@ -371,7 +366,6 @@ func TestProcessHealthEvents_NoApplicableEvents(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	healthEvents := &pb.HealthEvents{
@@ -403,7 +397,6 @@ func TestProcessGPUEvents_EmptyCheckName(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	events := []*pb.HealthEvent{
@@ -440,7 +433,6 @@ func TestProcessHealthEvents_MultipleGPU(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	healthEvents := &pb.HealthEvents{
@@ -472,7 +464,6 @@ func TestProcessHealthEvents_PartialFailure(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	healthEvents := &pb.HealthEvents{
@@ -518,7 +509,6 @@ func TestProcessGPUEvents_LatestEventWins(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	events := []*pb.HealthEvent{
@@ -571,7 +561,6 @@ func TestProcessGPUEvents_MultipleChecks(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	events := []*pb.HealthEvent{
@@ -620,7 +609,6 @@ func TestProcessGPUEvents_MessageTruncation(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	longMsg := strings.Repeat("A", 2000)
@@ -653,7 +641,6 @@ func TestProcessGPUEvents_TruncationBoundaries(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	tests := []struct {
@@ -724,7 +711,6 @@ func TestProcessGPUEvents_SortNilTimestamps(t *testing.T) {
 	connector := &DeviceConnector{
 		clientset: fakeCS,
 		stopCh:    stopCh,
-		ctx:       context.Background(),
 	}
 
 	now := time.Now()
