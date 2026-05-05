@@ -42,12 +42,15 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "nvsentinel.serviceAccountName" . }}
-      {{- if .Values.global.auditLogging.enabled }}
+      {{- if or .Values.global.auditLogging.enabled .Values.platformConnector.deviceConnector.enabled }}
       securityContext:
+        {{- if .Values.global.auditLogging.enabled }}
         fsGroup: 65532
-      {{- end }}
-      {{- if .Values.platformConnector.deviceConnector.enabled }}
+        {{- end }}
+        {{- if .Values.platformConnector.deviceConnector.enabled }}
+        # Required for filesystem permissions to access the Device API socket.
         supplementalGroups: [5000]
+        {{- end }}
       {{- end }}
       {{- if or .Values.global.auditLogging.enabled (and .Values.global.datastore (eq .Values.global.datastore.provider "postgresql")) }}
       initContainers:
