@@ -229,7 +229,8 @@ func TestProcessHealthEvents_GroupingIsCaseInsensitive(t *testing.T) {
 		},
 	}
 
-	_ = connector.processHealthEvents(context.Background(), healthEvents)
+	err := connector.processHealthEvents(context.Background(), healthEvents)
+	require.NoError(t, err)
 
 	assert.Len(t, fakeCS.Actions(), 1, "Events with different casing for the same UUID should be merged")
 }
@@ -658,7 +659,8 @@ func TestProcessGPUEvents_TruncationBoundaries(t *testing.T) {
 				Message:   strings.Repeat("A", tt.nameLength),
 			}}
 
-			_ = connector.processGPUEvents(context.Background(), "gpu-0", event)
+			err := connector.processGPUEvents(context.Background(), "gpu-0", event)
+			require.NoError(t, err)
 
 			var p statusPatch
 			json.Unmarshal(fakeCS.Actions()[0].(clienttesting.PatchAction).GetPatch(), &p)

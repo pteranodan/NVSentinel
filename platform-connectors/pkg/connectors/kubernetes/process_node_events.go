@@ -412,15 +412,13 @@ func (r *K8sConnector) writeNodeEvent(ctx context.Context, event *corev1.Event, 
 }
 
 func (r *K8sConnector) fetchHealthEventMessage(healthEvent *protos.HealthEvent) string {
-	message := ""
-
 	if healthEvent.IsHealthy {
-		message = NoHealthFailureMsg
-	} else {
-		message = r.constructHealthEventMessage(healthEvent)
+		return NoHealthFailureMsg
 	}
 
-	return message
+	message := r.constructHealthEventMessage(healthEvent)
+
+	return ensureTrailingSemicolon(message)
 }
 
 func (r *K8sConnector) constructHealthEventMessage(healthEvent *protos.HealthEvent) string {
@@ -669,5 +667,13 @@ func (r *K8sConnector) truncateNodeConditionMessage(messages []string) string {
 		result.WriteString(truncationSuffix)
 	}
 
-	return result.String()
+	return ensureTrailingSemicolon(result.String())
+}
+
+func ensureTrailingSemicolon(message string) string {
+	if message == "" || message == NoHealthFailureMsg || strings.HasSuffix(message, ";") {
+		return message
+	}
+
+	return message + ";"
 }
