@@ -42,7 +42,7 @@ func IsTemporaryError(err error) bool {
 
 // IsContextError checks if the error is a context-related error that should be retried
 func IsContextError(err error) bool {
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+	return errors.Is(err, context.DeadlineExceeded)
 }
 
 // IsKubernetesAPIError checks if the error is a Kubernetes API error that should be retried

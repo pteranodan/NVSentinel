@@ -967,9 +967,9 @@ func TestIsTemporaryError(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "context.Canceled should be retryable",
+			name:     "context.Canceled should not be retryable",
 			err:      context.Canceled,
-			expected: true,
+			expected: false,
 		},
 		{
 			name:     "wrapped context.DeadlineExceeded should be retryable",

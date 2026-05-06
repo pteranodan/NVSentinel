@@ -235,6 +235,10 @@ func (r *DeviceConnector) applyJitter(ctx context.Context, count int) {
 }
 
 func (r *DeviceConnector) processGPUEvents(ctx context.Context, name string, events []*pb.HealthEvent) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if len(events) == 0 {
 		return nil
 	}

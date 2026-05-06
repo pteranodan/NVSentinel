@@ -415,7 +415,8 @@ func TestProcessGPUEvents_EmptyCheckName(t *testing.T) {
 	for _, action := range fakeCS.Actions() {
 		if p, ok := action.(clienttesting.PatchAction); ok {
 			var patch statusPatch
-			json.Unmarshal(p.GetPatch(), &patch)
+			err = json.Unmarshal(p.GetPatch(), &patch)
+			assert.NoError(t, err)
 			assert.NotEmpty(t, patch.Status.Conditions, "Should not send a patch with zero conditions")
 		}
 	}
@@ -581,7 +582,8 @@ func TestProcessGPUEvents_MultipleChecks(t *testing.T) {
 
 	patchAction := fakeCS.Actions()[0].(clienttesting.PatchAction)
 	var receivedPatch statusPatch
-	json.Unmarshal(patchAction.GetPatch(), &receivedPatch)
+	err = json.Unmarshal(patchAction.GetPatch(), &receivedPatch)
+	assert.NoError(t, err)
 
 	assert.Len(t, receivedPatch.Status.Conditions, 2, "Both unique checks should be present in the patch")
 
@@ -625,7 +627,8 @@ func TestProcessGPUEvents_MessageTruncation(t *testing.T) {
 
 	patchAction := fakeCS.Actions()[0].(clienttesting.PatchAction)
 	var p statusPatch
-	json.Unmarshal(patchAction.GetPatch(), &p)
+	err = json.Unmarshal(patchAction.GetPatch(), &p)
+	assert.NoError(t, err)
 
 	msg := p.Status.Conditions[0].Message
 	assert.True(t, len(msg) <= 1024, "Message should be truncated to 1KB")
@@ -663,7 +666,8 @@ func TestProcessGPUEvents_TruncationBoundaries(t *testing.T) {
 			require.NoError(t, err)
 
 			var p statusPatch
-			json.Unmarshal(fakeCS.Actions()[0].(clienttesting.PatchAction).GetPatch(), &p)
+			err = json.Unmarshal(fakeCS.Actions()[0].(clienttesting.PatchAction).GetPatch(), &p)
+			assert.NoError(t, err)
 			assert.Equal(t, tt.expected, p.Status.Conditions[0].Message)
 			assert.LessOrEqual(t, len(p.Status.Conditions[0].Message), 1024)
 		})
@@ -694,7 +698,7 @@ func TestProcessGPUEvents_RespectsContextCancellation(t *testing.T) {
 
 	err := connector.processGPUEvents(ctx, gpuName, events)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "context canceled")
 }
 
@@ -738,7 +742,8 @@ func TestProcessGPUEvents_SortNilTimestamps(t *testing.T) {
 
 	patchAction := actions[0].(clienttesting.PatchAction)
 	var p statusPatch
-	json.Unmarshal(patchAction.GetPatch(), &p)
+	err = json.Unmarshal(patchAction.GetPatch(), &p)
+	assert.NoError(t, err)
 
 	require.Len(t, p.Status.Conditions, 1)
 	assert.Equal(t, "has-time", p.Status.Conditions[0].Message, "The latest (non-nil) event should have been used")

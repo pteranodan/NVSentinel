@@ -33,8 +33,8 @@ func TestIsTemporaryError(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "Context Canceled",
-			err:      context.Canceled,
+			name:     "Context DeadlineExceeded",
+			err:      context.DeadlineExceeded,
 			expected: true,
 		},
 		{
